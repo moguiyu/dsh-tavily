@@ -1,0 +1,40 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test --workspaces --if-present
+
+      - name: Build client bundle
+        run: node packages/dsh-tool-tavily-search/scripts/build-client.mjs
+
+      - name: Publish @moguiyu/dsh-tool-tavily-search
+        run: npm publish packages/dsh-tool-tavily-search --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @moguiyu/dsh-tavily-backend
+        run: npm publish packages/dsh-tavily-backend --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
