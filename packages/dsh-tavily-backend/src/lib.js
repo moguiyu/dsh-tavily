@@ -1,6 +1,7 @@
 /**
  * Pure helpers for the Tavily backend (exported for tests).
  */
+import { readFileSync } from 'node:fs'
 
 export const STRATEGIES = ['rotate', 'low-usage-first', 'high-usage-first']
 
@@ -56,14 +57,9 @@ export function orderKeys(values, strategy, usageOf) {
 /** Read a JSON object file; `fallback` on missing or unparsable content. */
 export function readJsonFile(path, fallback) {
   try {
-    const { readFileSync } = awaitImportFs()
     const parsed = JSON.parse(readFileSync(path, 'utf8'))
     return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback
   } catch {
     return fallback
   }
-}
-
-function awaitImportFs() {
-  return import('node:fs')
 }

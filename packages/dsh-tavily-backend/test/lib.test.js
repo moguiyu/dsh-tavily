@@ -14,11 +14,11 @@ test('STRATEGIES and isValidStrategy', () => {
 
 test('maskValue', () => {
   const long = 'tvly-dev-1234567890abcdef'
-  assert.equal(maskValue(long), 'tvly-dev-12…cdef')
+  assert.equal(maskValue(long), 'tvly-dev-123…cdef')
   assert.equal(maskValue('short'), '••••')
   assert.equal(maskValue(''), '')
   assert.equal(maskValue('tvly-dev-1234567890abcdef, tvly-dev-xyz'),
-    'tvly-dev-12…cdef, tvly-dev-…')
+    'tvly-dev-123…cdef, ••••')
 })
 
 test('parseKeyList', () => {

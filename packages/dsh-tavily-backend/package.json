@@ -17,7 +17,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "keywords": [
     "deepseek-harness",
