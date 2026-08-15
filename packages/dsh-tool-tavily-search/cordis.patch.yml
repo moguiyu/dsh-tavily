@@ -1,0 +1,3 @@
+- insert:
+  - id: tool-tavily-search
+    name: '@moguiyu/dsh-tool-tavily-search'

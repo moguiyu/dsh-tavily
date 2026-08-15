@@ -12,12 +12,18 @@
   },
   "files": [
     "src",
+    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "scripts": {
     "test": "node --test"
