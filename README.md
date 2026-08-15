@@ -95,8 +95,8 @@ format the dsh web shell requires; regenerate it with `pnpm build` after editing
 2. `npm login` with your npm account.
 3. Publish both packages publicly:
    ```sh
-   npm publish packages/dsh-tool-tavily-search --access public
-   npm publish packages/dsh-tavily-backend --access public
+   npm publish ./packages/dsh-tool-tavily-search --access public
+   npm publish ./packages/dsh-tavily-backend --access public
    ```
 4. Add the `dsh-plugin` GitHub topic and submit to the curated lists
    ([awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin),
