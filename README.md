@@ -19,18 +19,20 @@ Tavily web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 
 ## Install
 
-```sh
-dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
-dsh plugin --profile web add @moguiyu/dsh-tavily-backend
-```
-
-Or directly from GitHub:
+Easiest — one command, activates both packages:
 
 ```sh
 dsh plugin --profile web add github:moguiyu/dsh-tavily
 ```
 
-Then add the rows to `$DSH_HOME/profiles/web/cordis.patch.yml`:
+Or from npm:
+
+```sh
+dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
+dsh plugin --profile web add @moguiyu/dsh-tavily-backend
+```
+
+For full `web_search` provider switching, add the provider row and config to `$DSH_HOME/profiles/web/cordis.patch.yml`:
 
 ```yaml
 - insert:

@@ -1,0 +1,5 @@
+- insert:
+  - id: tool-tavily-search
+    name: '@moguiyu/dsh-tool-tavily-search'
+  - id: tavily-backend
+    name: '@moguiyu/dsh-tavily-backend'

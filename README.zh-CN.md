@@ -19,18 +19,20 @@
 
 ## 安装
 
-```sh
-dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
-dsh plugin --profile web add @moguiyu/dsh-tavily-backend
-```
-
-或直接从 GitHub 安装：
+最简单 — 一条命令，自动激活两个包：
 
 ```sh
 dsh plugin --profile web add github:moguiyu/dsh-tavily
 ```
 
-然后在 `$DSH_HOME/profiles/web/cordis.patch.yml` 中添加：
+或通过 npm 安装：
+
+```sh
+dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
+dsh plugin --profile web add @moguiyu/dsh-tavily-backend
+```
+
+如需完整 `web_search` 提供方切换，请在 `$DSH_HOME/profiles/web/cordis.patch.yml` 中添加提供方行与配置：
 
 ```yaml
 - insert:
