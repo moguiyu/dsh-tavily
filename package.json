@@ -1,0 +1,15 @@
+{
+  "name": "dsh-tavily-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publishable DeepSeek Harness plugins for Tavily-backed search: tool + settings UI package and backend (usage, key manager, on/off toggle).",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "pnpm -r test",
+    "build": "pnpm -r build"
+  },
+  "license": "MIT"
+}
