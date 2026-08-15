@@ -1,9 +1,9 @@
 /**
- * Client half source for `@yourscope/dsh-tool-tavily-search`.
+ * Client half source for `@moguiyu/dsh-tool-tavily-search`.
  * `factory` must stay self-contained: scripts/build-client.mjs serializes it
  * with Function.prototype.toString into the window.__ModuleLoader__ bundle.
  */
-export const id = '@yourscope/dsh-tool-tavily-search'
+export const id = '@moguiyu/dsh-tool-tavily-search'
 
 export function factory(require) {
   const react = require('react')

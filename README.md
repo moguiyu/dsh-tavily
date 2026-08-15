@@ -12,18 +12,18 @@ key management backend, and the on/off switch for the built-in `web_search` tool
 
 | Package | Role |
 |---|---|
-| [`@yourscope/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | `tavily_search` model tool (key rotation, failover on 401/429) + the **Tavily Search** settings card (expandable plugin-config card: key list, usage strategy, usage gauge, on/off switch) |
-| [`@yourscope/dsh-tavily-backend`](packages/dsh-tavily-backend) | Local HTTP backend: `/api/tavily-usage`, `/api/tavily-manager` (flat key list + strategies + saved dates), `/api/tavily-toggle` (web_search provider switch, persisted) |
+| [`@moguiyu/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | `tavily_search` model tool (key rotation, failover on 401/429) + the **Tavily Search** settings card (expandable plugin-config card: key list, usage strategy, usage gauge, on/off switch) |
+| [`@moguiyu/dsh-tavily-backend`](packages/dsh-tavily-backend) | Local HTTP backend: `/api/tavily-usage`, `/api/tavily-manager` (flat key list + strategies + saved dates), `/api/tavily-toggle` (web_search provider switch, persisted) |
 
 ## Install
 
 ```sh
 # from npm (after publishing)
-dsh plugin --profile web add @yourscope/dsh-tool-tavily-search
-dsh plugin --profile web add @yourscope/dsh-tavily-backend
+dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
+dsh plugin --profile web add @moguiyu/dsh-tavily-backend
 
 # or directly from git (no npm publish needed)
-dsh plugin --profile web add github:yourname/dsh-tavily
+dsh plugin --profile web add github:moguiyu/dsh-tavily
 ```
 
 Then add the rows to `$DSH_HOME/profiles/web/cordis.patch.yml` (hot-reloaded):
@@ -33,9 +33,9 @@ Then add the rows to `$DSH_HOME/profiles/web/cordis.patch.yml` (hot-reloaded):
   - id: web-search-tavily
     name: '@crayonlu/dsh-web-search-tavily'
   - id: tool-tavily-search
-    name: '@yourscope/dsh-tool-tavily-search'
+    name: '@moguiyu/dsh-tool-tavily-search'
   - id: tavily-backend
-    name: '@yourscope/dsh-tavily-backend'
+    name: '@moguiyu/dsh-tavily-backend'
 - id: web
   config:
     searchProvider: tavily
@@ -91,9 +91,13 @@ format the dsh web shell requires; regenerate it with `pnpm build` after editing
 
 ## Publishing
 
-1. Replace the `@yourscope` scope with your npm scope (or tell the maintainer).
-2. Fill `repository.url` in each `package.json`.
-3. `pnpm publish -r` (or `npm publish --workspaces`).
+1. Create the GitHub repository `moguiyu/dsh-tavily` and push this repo.
+2. `npm login` with your npm account.
+3. Publish both packages publicly:
+   ```sh
+   npm publish packages/dsh-tool-tavily-search --access public
+   npm publish packages/dsh-tavily-backend --access public
+   ```
 4. Add the `dsh-plugin` GitHub topic and submit to the curated lists
    ([awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin),
    [awesome-deepseek-harness](https://github.com/0xsline/awesome-deepseek-harness)).

@@ -1,4 +1,4 @@
-# @yourscope/dsh-tool-tavily-search
+# @moguiyu/dsh-tool-tavily-search
 
 Registers the `tavily_search` model tool and the **Tavily Search** settings card for the
 DeepSeek Harness web UI.

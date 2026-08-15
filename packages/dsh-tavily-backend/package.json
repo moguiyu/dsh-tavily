@@ -1,5 +1,5 @@
 {
-  "name": "@yourscope/dsh-tavily-backend",
+  "name": "@moguiyu/dsh-tavily-backend",
   "version": "0.1.0",
   "description": "Tavily settings backend for the DeepSeek Harness: usage endpoint, flat key-list manager with usage strategies, and the web_search on/off toggle.",
   "type": "module",
@@ -16,6 +16,9 @@
     "LICENSE"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "node --test"
   },
@@ -28,7 +31,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourname/dsh-tavily.git"
+    "url": "https://github.com/moguiyu/dsh-tavily.git"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

@@ -1,5 +1,5 @@
 {
-  "name": "@yourscope/dsh-tool-tavily-search",
+  "name": "@moguiyu/dsh-tool-tavily-search",
   "version": "0.1.0",
   "description": "Tavily-backed web search for the DeepSeek Harness: rotation-aware tavily_search model tool plus the Tavily Search settings card (keys, usage strategy, usage gauge, on/off switch).",
   "type": "module",
@@ -18,6 +18,9 @@
     "LICENSE"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "client": {
       "platform": "web",
@@ -41,7 +44,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourname/dsh-tavily.git"
+    "url": "https://github.com/moguiyu/dsh-tavily.git"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",

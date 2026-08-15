@@ -1,7 +1,7 @@
 /**
- * Package-owned invariant companion for `@yourscope/dsh-tool-tavily-search`.
+ * Package-owned invariant companion for `@moguiyu/dsh-tool-tavily-search`.
  */
-const PACKAGE_NAME = '@yourscope/dsh-tool-tavily-search'
+const PACKAGE_NAME = '@moguiyu/dsh-tool-tavily-search'
 
 /** Cordis companion plugin name. */
 const name = 'tool-tavily-search-invariant'

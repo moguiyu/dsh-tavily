@@ -1,5 +1,5 @@
 /**
- * `@yourscope/dsh-tavily-backend`: one row registering the Tavily settings
+ * `@moguiyu/dsh-tavily-backend`: one row registering the Tavily settings
  * routes on the harness webServer, plus the persisted on/off flip for the
  * `web` provider.
  */
@@ -146,7 +146,7 @@ export function apply(ctx) {
 
   // Re-apply the persisted choice at activation (default: enabled).
   const toggleState = readState(TOGGLE_STATE)
-  if (toggleState.enabled !== true) {
+  if (toggleState.enabled === false) {
     void applyProvider(false)
   }
 

@@ -1,4 +1,4 @@
-# @yourscope/dsh-tavily-backend
+# @moguiyu/dsh-tavily-backend
 
 Local HTTP backend for the Tavily Search settings card. One composition row registers
 three routes on the harness `webServer`:

@@ -1,7 +1,7 @@
 /**
- * Package-owned invariant companion for `@yourscope/dsh-tavily-backend`.
+ * Package-owned invariant companion for `@moguiyu/dsh-tavily-backend`.
  */
-const PACKAGE_NAME = '@yourscope/dsh-tavily-backend'
+const PACKAGE_NAME = '@moguiyu/dsh-tavily-backend'
 
 /** Cordis companion plugin name. */
 const name = 'tavily-backend-invariant'

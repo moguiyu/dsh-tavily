@@ -9,9 +9,9 @@ APIs can change without notice. Global agent instructions still apply.
 Ship the two packages in `packages/` as standards-compliant, publishable dsh plugins and keep
 them working against the running harness:
 
-- **`@yourscope/dsh-tool-tavily-search`** — the `tavily_search` model tool (key rotation,
+- **`@moguiyu/dsh-tool-tavily-search`** — the `tavily_search` model tool (key rotation,
   failover on 401/429) plus the **Tavily Search** settings card for the web UI.
-- **`@yourscope/dsh-tavily-backend`** — one row registering three local HTTP routes
+- **`@moguiyu/dsh-tavily-backend`** — one row registering three local HTTP routes
   (`/api/tavily-usage`, `/api/tavily-manager`, `/api/tavily-toggle`) plus the persisted
   on/off switch for the `web` provider.
 
@@ -23,8 +23,7 @@ key material.
 
 - Scaffolded and committed; `node --test` green (5 tool + 7 backend tests); the client bundle
   `lib/client.js` builds from `src/client.js` and is syntax-checked.
-- **Not done:** replace placeholders (`@yourscope` scope, `repository.url`,
-  LICENSE copyright line), decide publish path (npm vs GitHub-only), publish, add the
+- **Not done:** decide publish path (npm vs GitHub-only), publish, add the
   `dsh-plugin` GitHub topic / curated lists, optionally migrate the live deployment.
 
 ## 3. Domain model
@@ -107,6 +106,6 @@ old dirs. The three host packages map to the single `dsh-tavily-backend` row.
 
 1. All tests pass and the bundle builds from clean state.
 2. No secrets, keys, or session material in the repo (grep for `tvly-`, `sk-`).
-3. Placeholders resolved (`@yourscope`, `repository.url`, LICENSE copyright).
+3. Placeholders resolved (`@moguiyu`, `https://github.com/moguiyu/dsh-tavily.git`, MIT copyright).
 4. README install instructions work from a clean profile.
 5. Live-verified: all three routes, toggle off/on fallback, strategy reorder, reveal.

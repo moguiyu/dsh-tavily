@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: "@yourscope/dsh-tool-tavily-search",
+  id: "@moguiyu/dsh-tool-tavily-search",
   factory: function factory(require) {
   const react = require('react')
   const _primitives = require('@deepseek-ai/dsh-client-ui-primitives')

@@ -1,5 +1,5 @@
 /**
- * `@yourscope/dsh-tool-tavily-search` host half: the `tavily_search` model tool.
+ * `@moguiyu/dsh-tool-tavily-search` host half: the `tavily_search` model tool.
  * Keys resolve from the `TAVILY_API_KEYS` credential per call; rotation is
  * round-robin with failover on 401/429. HTTP goes through global fetch (Node 22+).
  */
