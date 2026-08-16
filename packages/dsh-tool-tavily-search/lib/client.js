@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({
     const d = new Date(iso)
     if (isNaN(d.getTime())) return '—'
     const pad = (n) => String(n).padStart(2, '0')
-    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
   }
 
   function SvgIcon({ name, size, style }) {
@@ -64,24 +64,18 @@ window.__ModuleLoader__.load({
     }, react.createElement('span', { style: { position: 'absolute', top: 2, left: checked === true ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: '#fff', transition: 'left .12s ease' } }))
   }
 
-  function UsageRow({ row }) {
-    if (!row.ok) {
-      return react.createElement('div', { style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } },
-        'Failed to read usage' + (row.status !== undefined ? ' (HTTP ' + row.status + ')' : row.error ? ': ' + row.error : '')
-      )
-    }
-    const pct = row.planLimit != null && row.planLimit > 0 && row.planUsage != null
-      ? Math.min(100, Math.round((row.planUsage / row.planLimit) * 100))
-      : null
-    const warn = pct !== null && pct > 85
-    return react.createElement('div', { style: { marginTop: 4 } },
-      react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12 } },
-        react.createElement('span', null, 'Plan usage ' + (row.planUsage != null ? row.planUsage : '?') + (row.planLimit != null ? ' / ' + row.planLimit : '')),
-        react.createElement('span', null, pct !== null ? pct + '%' : (row.currentPlan || ''))
+  function UsageCircle({ percent, size, label }) {
+    const radius = 15
+    const circumference = 2 * Math.PI * radius
+    const pct = percent != null ? Math.min(100, Math.max(0, percent)) : 0
+    const warn = pct > 85
+    const dim = size || 44
+    return react.createElement('div', { style: { position: 'relative', width: dim, height: dim, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } },
+      react.createElement('svg', { width: dim, height: dim, viewBox: '0 0 40 40' },
+        react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: 'var(--dsw-alias-border-l2)', strokeWidth: 4 }),
+        react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: warn ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-brand-primary)', strokeWidth: 4, strokeLinecap: 'round', strokeDasharray: circumference, strokeDashoffset: circumference - (pct / 100) * circumference, transform: 'rotate(-90 20 20)' })
       ),
-      react.createElement('div', { style: { height: 8, borderRadius: 4, background: 'var(--dsw-alias-border-l2)', overflow: 'hidden', marginTop: 2 } },
-        react.createElement('div', { style: { height: '100%', width: (pct !== null ? pct : 0) + '%', background: warn ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-brand-primary)' } })
-      )
+      react.createElement('span', { style: { position: 'absolute', fontSize: 11, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, label != null ? label : (percent != null ? percent + '%' : '—'))
     )
   }
 
@@ -150,10 +144,29 @@ window.__ModuleLoader__.load({
       }
     }
 
-    const hasPending = (server !== null && strategy !== server.strategy)
-      || Object.values(removing).some(Boolean)
+    const hasPending = Object.values(removing).some(Boolean)
       || Object.values(replacing).some(Boolean)
       || adds.some((item) => item.value.trim().length > 0)
+
+    const saveStrategy = async (next) => {
+      setBusy(true)
+      setNotice(null)
+      try {
+        const response = await fetch('/api/tavily-manager', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ add: [], remove: [], strategy: next })
+        })
+        const data = await response.json()
+        if (!data.ok) { setNotice({ error: data.error || 'Strategy save failed' }); return }
+        setNotice({ ok: 'Strategy saved — effective on the next search.' })
+        await refresh()
+      } catch (error) {
+        setNotice({ error: String(error && error.message ? error.message : error) })
+      } finally {
+        setBusy(false)
+      }
+    }
 
     const save = async () => {
       setBusy(true)
@@ -236,7 +249,7 @@ window.__ModuleLoader__.load({
 
     const isOff = enabled === false
 
-    return react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, background: 'var(--dsw-alias-bg-layer-3)', minWidth: 0, overflow: 'hidden' } },
+    return react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, minWidth: 0, overflow: 'hidden' } },
       react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
       react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 52, boxSizing: 'border-box' } },
         react.createElement('button', {
@@ -264,7 +277,7 @@ window.__ModuleLoader__.load({
           )
         )
       ),
-      expanded && react.createElement('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-module-platform)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 16 } },
+      expanded && react.createElement('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 16 } },
         isOff
           ? react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
               'Tavily search is off — web_search uses the native provider (DeepSeek). No Tavily key is needed.'
@@ -309,11 +322,11 @@ window.__ModuleLoader__.load({
                       react.createElement('td', { style: Object.assign({}, cellStyle, { color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' }) }, formatDate(key.savedAt)),
                       react.createElement('td', { style: cellStyle },
                         isReplacing
-                          ? react.createElement('span', { style: { display: 'inline-flex', gap: 4 } },
+                          ? react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
                               react.createElement(IconButton, { icon: 'check', title: 'Keep', onClick: () => { setReplacing((current) => Object.assign({}, current, { [masked]: false })) }, disabled: busy }),
                               react.createElement(IconButton, { icon: 'close', title: 'Cancel', onClick: () => cancelReplace(masked), disabled: busy })
                             )
-                          : react.createElement('span', { style: { display: 'inline-flex', gap: 4 } },
+                          : react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
                               !isRemoved && react.createElement(IconButton, { icon: isRevealed ? 'eyeOff' : 'eye', title: isRevealed ? 'Hide key' : 'Show key', onClick: () => toggleReveal(masked), disabled: busy }),
                               !isRemoved && react.createElement(IconButton, { icon: 'pencil', title: 'Edit', onClick: () => startReplace(masked), disabled: busy }),
                               react.createElement(IconButton, {
@@ -353,15 +366,15 @@ window.__ModuleLoader__.load({
                 react.createElement('select', {
                   style: { maxWidth: 280, height: 32, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', padding: '0 10px', fontSize: 13 },
                   value: strategy,
-                  onChange: (event) => setStrategy(event.target.value),
+                  onChange: (event) => saveStrategy(event.target.value),
                   disabled: busy
                 }, STRATEGIES.map((option) => react.createElement('option', { key: option.id, value: option.id }, option.label))),
                 react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
-                  (STRATEGIES.find((option) => option.id === strategy) || STRATEGIES[0]).hint + ' The strategy is applied when you save; the first key then becomes primary for web_search.'
+                  (STRATEGIES.find((option) => option.id === strategy) || STRATEGIES[0]).hint + ' The strategy is saved immediately when you select it; the first key then becomes primary for web_search.'
                 )
               ),
               react.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-                react.createElement('button', { type: 'button', style: Object.assign({}, btn, { height: 32, background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)' }), onClick: save, disabled: busy || !hasPending }, 'Save changes'),
+                react.createElement('button', { type: 'button', style: Object.assign({}, btn, { height: 32, background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)' }), onClick: save, disabled: busy || !hasPending }, 'Save key changes'),
                 notice !== null && react.createElement('span', { style: { fontSize: 13, color: notice.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice.ok ? notice.ok : String(notice.error))
               ),
               react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 } },
@@ -371,11 +384,32 @@ window.__ModuleLoader__.load({
                 ),
                 usageError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usageError)),
                 usage !== null && usage.ok === false && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usage.error)),
-                usage !== null && usage.ok === true && react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                usage !== null && usage.ok === true && react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                   react.createElement('div', { style: { fontSize: 13 } },
                     usage.totals.keys + ' key(s) (' + usage.totals.okKeys + ' readable)' + (usage.totals.planLimit !== null ? ' · plan usage ' + usage.totals.planUsage + ' / ' + usage.totals.planLimit : '')
                   ),
-                  usage.perKey.map((row, index) => react.createElement(UsageRow, { key: index, row: row }))
+                  react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
+                    react.createElement('thead', null,
+                      react.createElement('tr', null,
+                        react.createElement('th', { style: headStyle }, 'API Key'),
+                        react.createElement('th', { style: headStyle }, 'Usage')
+                      )
+                    ),
+                    react.createElement('tbody', null,
+                      (server !== null ? server.keys : []).map((key, index) => {
+                        const row = usage.perKey[index]
+                        const pct = row && row.ok && row.planLimit != null && row.planLimit > 0 && row.planUsage != null
+                          ? Math.min(100, Math.round((row.planUsage / row.planLimit) * 100))
+                          : null
+                        return react.createElement('tr', { key: key.masked, style: { borderBottom: '1px solid var(--dsw-alias-border-l2)' } },
+                          react.createElement('td', { style: Object.assign({}, cellStyle, { fontFamily: 'var(--ds-font-family-code, monospace)', fontSize: 12, wordBreak: 'break-all' }) }, key.masked),
+                          react.createElement('td', { style: cellStyle },
+                            react.createElement(UsageCircle, { percent: pct, label: pct != null ? pct + '%' : (row && row.ok && row.planUsage != null ? String(row.planUsage) : '—') })
+                          )
+                        )
+                      })
+                    )
+                  )
                 )
               ),
               react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
