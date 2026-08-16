@@ -64,16 +64,15 @@ window.__ModuleLoader__.load({
     }, react.createElement('span', { style: { position: 'absolute', top: 2, left: checked === true ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: '#fff', transition: 'left .12s ease' } }))
   }
 
-  function UsageCircle({ percent, size, label }) {
+  function UsageCircle({ percent, size, label, onClick }) {
     const radius = 15
     const circumference = 2 * Math.PI * radius
     const pct = percent != null ? Math.min(100, Math.max(0, percent)) : 0
-    const warn = pct > 85
     const dim = size || 44
-    return react.createElement('div', { style: { position: 'relative', width: dim, height: dim, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } },
+    return react.createElement('button', { type: 'button', title: 'Reload usage', 'aria-label': 'Reload usage', onClick: onClick, style: { position: 'relative', width: dim, height: dim, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } },
       react.createElement('svg', { width: dim, height: dim, viewBox: '0 0 40 40' },
         react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: 'var(--dsw-alias-border-l2)', strokeWidth: 4 }),
-        react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: warn ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-brand-primary)', strokeWidth: 4, strokeLinecap: 'round', strokeDasharray: circumference, strokeDashoffset: circumference - (pct / 100) * circumference, transform: 'rotate(-90 20 20)' })
+        react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: 'var(--dsw-alias-state-success-primary)', strokeWidth: 4, strokeLinecap: 'round', strokeDasharray: circumference, strokeDashoffset: circumference - (pct / 100) * circumference, transform: 'rotate(-90 20 20)' })
       ),
       react.createElement('span', { style: { position: 'absolute', fontSize: 11, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, label != null ? label : (percent != null ? percent + '%' : '—'))
     )
@@ -362,7 +361,7 @@ window.__ModuleLoader__.load({
                             )
                       ),
                       react.createElement('td', { style: cellStyle },
-                        react.createElement(UsageCircle, { percent: pct, label: pct != null ? pct + '%' : (usageRow && usageRow.ok && usageRow.planUsage != null ? String(usageRow.planUsage) : '—') })
+                        react.createElement(UsageCircle, { percent: pct, label: pct != null ? pct + '%' : (usageRow && usageRow.ok && usageRow.planUsage != null ? String(usageRow.planUsage) : '—'), onClick: refresh })
                       ),
                       react.createElement('td', { style: Object.assign({}, cellStyle, { color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' }) }, formatDate(key.savedAt)),
                       react.createElement('td', { style: cellStyle },
@@ -410,7 +409,6 @@ window.__ModuleLoader__.load({
               ),
               react.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
                 react.createElement('button', { type: 'button', style: btn, onClick: () => setAdds((current) => [...current, { id: 'add-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), value: '' }]), disabled: busy }, '+ Add key'),
-                react.createElement('button', { type: 'button', style: btn, onClick: refresh, disabled: busy }, 'Refresh usage')
               ),
               react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
                 react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },

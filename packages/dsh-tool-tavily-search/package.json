@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tool-tavily-search",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Tavily-backed web search for the DeepSeek Harness: rotation-aware tavily_search model tool plus the Tavily Search settings card (keys, usage strategy, usage gauge, on/off switch).",
   "type": "module",
   "main": "./src/index.js",
