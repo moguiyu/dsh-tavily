@@ -68,6 +68,10 @@ Toggle the built-in `web_search` provider between `tavily` and the native `deeps
 
 Mode `600`, no secrets stored.
 
+## Screenshot
+
+![Tavily Search for DSH](assets/tavily-search.png)
+
 ## Development
 
 ```sh

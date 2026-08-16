@@ -68,6 +68,10 @@ dsh plugin --profile web add @moguiyu/dsh-tavily
 
 权限 `600`，不保存密钥。
 
+## 截图
+
+![Tavily Search for DSH](assets/tavily-search.png)
+
 ## 开发
 
 ```sh
