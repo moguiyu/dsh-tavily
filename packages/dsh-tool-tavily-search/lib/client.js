@@ -338,7 +338,9 @@ window.__ModuleLoader__.load({
                     const isRemoved = removing[masked] === true
                     const isReplacing = replacing[masked] === true
                     const isRevealed = typeof revealed[masked] === 'string'
-                    const usageRow = usage !== null && usage.ok === true ? usage.perKey[index] : null
+                    const usageRow = usage !== null && usage.ok === true
+                      ? (usage.perKey.find((row) => row.masked === masked) || usage.perKey[index])
+                      : null
                     const pct = usageRow && usageRow.ok && usageRow.planLimit != null && usageRow.planLimit > 0 && usageRow.planUsage != null
                       ? Math.min(100, Math.round((usageRow.planUsage / usageRow.planLimit) * 100))
                       : null

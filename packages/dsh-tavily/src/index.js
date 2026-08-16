@@ -400,11 +400,24 @@ function applyBackend(ctx) {
         }
       }
     }
+    const primaryMasked = keys.length > 0 ? maskValue(keys[0]) : null
+    const display = keys.map((value) => {
+      const masked = maskValue(value)
+      return {
+        masked,
+        savedAt: keySavedAt[masked] !== undefined ? keySavedAt[masked] : null,
+      }
+    }).sort((a, b) => {
+      if (a.savedAt === b.savedAt) return 0
+      if (a.savedAt === null) return 1
+      if (b.savedAt === null) return -1
+      return a.savedAt < b.savedAt ? -1 : 1
+    })
     return {
-      keys: keys.map((value, index) => ({
-        masked: maskValue(value),
-        savedAt: keySavedAt[maskValue(value)] !== undefined ? keySavedAt[maskValue(value)] : null,
-        primary: index === 0,
+      keys: display.map((entry) => ({
+        masked: entry.masked,
+        savedAt: entry.savedAt,
+        primary: entry.masked === primaryMasked,
       })),
       strategy: isValidStrategy(state.strategy) ? state.strategy : 'rotate',
     }
@@ -437,15 +450,25 @@ function applyBackend(ctx) {
       try {
         const keys = await collectStoredKeys(credentials)
         if (keys.length === 0) return send(res, 200, { ok: false, error: 'no Tavily API key configured' })
+        const state = readState(MANAGER_STATE)
+        const keySavedAt = state.keySavedAt !== undefined && typeof state.keySavedAt === 'object' ? state.keySavedAt : {}
+        const orderedKeys = keys.slice().sort((a, b) => {
+          const am = keySavedAt[maskValue(a)] !== undefined ? keySavedAt[maskValue(a)] : null
+          const bm = keySavedAt[maskValue(b)] !== undefined ? keySavedAt[maskValue(b)] : null
+          if (am === bm) return 0
+          if (am === null) return 1
+          if (bm === null) return -1
+          return am < bm ? -1 : 1
+        })
         const perKey = []
-        for (const key of keys) {
+        for (const key of orderedKeys) {
           try {
             const usage = await fetchUsageDetailsFor(key)
             perKey.push(usage !== null
-              ? { ok: true, ...usage }
-              : { ok: false, error: 'usage unavailable' })
+              ? { ok: true, masked: maskValue(key), ...usage }
+              : { ok: false, masked: maskValue(key), error: 'usage unavailable' })
           } catch (error) {
-            perKey.push({ ok: false, error: String(error && error.message ? error.message : error) })
+            perKey.push({ ok: false, masked: maskValue(key), error: String(error && error.message ? error.message : error) })
           }
         }
         const okRows = perKey.filter((row) => row.ok)
