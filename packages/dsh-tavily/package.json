@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Tavily Search for DSH: multiple API keys, rotation/failover, usage gauge, settings card, and web_search toggle in one plugin.",
   "type": "module",
   "main": "./src/index.js",
