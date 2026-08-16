@@ -12,9 +12,9 @@ export function factory(require) {
   const inject = ['slots']
 
   const STRATEGIES = [
-    { id: 'rotate', label: 'Rotate each key', hint: 'Keys are tried in turn (round-robin); on 401/429 the next key is used.' },
-    { id: 'low-usage-first', label: 'Lowest usage first', hint: 'On save, keys are re-ordered by current Tavily usage (least used first).' },
-    { id: 'high-usage-first', label: 'Highest usage first', hint: 'On save, keys are re-ordered by current Tavily usage (most used first).' }
+    { id: 'rotate', label: 'Round-robin', hint: 'Use keys in turn; on HTTP 401/429 the next key is tried automatically.' },
+    { id: 'low-usage-first', label: 'Lowest usage first', hint: 'Re-orders keys by current Tavily usage, least-used first. The first key becomes primary.' },
+    { id: 'high-usage-first', label: 'Highest usage first', hint: 'Re-orders keys by current Tavily usage, most-used first. The first key becomes primary.' }
   ]
 
   const ICONS = {
@@ -427,7 +427,7 @@ export function factory(require) {
                   notice !== null && react.createElement('span', { style: { fontSize: 13, color: notice.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice.ok ? notice.ok : String(notice.error))
                 ),
                 react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
-                  (STRATEGIES.find((option) => option.id === strategy) || STRATEGIES[0]).hint + ' Saved immediately when selected; the first key then becomes primary for web_search.'
+                  (STRATEGIES.find((option) => option.id === strategy) || STRATEGIES[0]).hint + ' Saved immediately when selected.'
                 )
               ),
               usageError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usageError)),

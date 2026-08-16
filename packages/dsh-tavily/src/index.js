@@ -306,7 +306,7 @@ function readBody(req) {
   })
 }
 
-async function fetchUsageFor(key) {
+async function fetchUsageDetailsFor(key) {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 15000)
@@ -323,12 +323,30 @@ async function fetchUsageFor(key) {
     const json = await response.json()
     const account = json !== null && typeof json === 'object' ? json.account : undefined
     const keyUsage = json !== null && typeof json === 'object' ? json.key : undefined
-    if (account !== undefined && typeof account.plan_usage === 'number') return account.plan_usage
-    if (keyUsage !== undefined && typeof keyUsage.usage === 'number') return keyUsage.usage
-    return null
+    const usage = keyUsage !== undefined && typeof keyUsage.usage === 'number'
+      ? keyUsage.usage
+      : (account !== undefined && typeof account.plan_usage === 'number' ? account.plan_usage : null)
+    const planUsage = account !== undefined && typeof account.plan_usage === 'number'
+      ? account.plan_usage
+      : (keyUsage !== undefined && typeof keyUsage.usage === 'number' ? keyUsage.usage : null)
+    const planLimit = account !== undefined && typeof account.plan_limit === 'number'
+      ? account.plan_limit
+      : (keyUsage !== undefined && typeof keyUsage.limit === 'number' ? keyUsage.limit
+        : (keyUsage !== undefined && typeof keyUsage.plan_limit === 'number' ? keyUsage.plan_limit : null))
+    const currentPlan = account !== undefined && typeof account.plan === 'string'
+      ? account.plan
+      : (keyUsage !== undefined && typeof keyUsage.plan === 'string' ? keyUsage.plan : null)
+    if (usage === null && planUsage === null) return null
+    return { usage, planUsage, planLimit, currentPlan }
   } catch {
     return null
   }
+}
+
+async function fetchUsageFor(key) {
+  const details = await fetchUsageDetailsFor(key)
+  if (details === null) return null
+  return details.usage !== null ? details.usage : details.planUsage
 }
 
 async function collectStoredKeys(credentials) {
@@ -422,9 +440,9 @@ function applyBackend(ctx) {
         const perKey = []
         for (const key of keys) {
           try {
-            const usage = await fetchUsageFor(key)
+            const usage = await fetchUsageDetailsFor(key)
             perKey.push(usage !== null
-              ? { ok: true, usage, planUsage: usage, planLimit: null, currentPlan: null }
+              ? { ok: true, ...usage }
               : { ok: false, error: 'usage unavailable' })
           } catch (error) {
             perKey.push({ ok: false, error: String(error && error.message ? error.message : error) })
@@ -438,8 +456,8 @@ function applyBackend(ctx) {
             keys: keys.length,
             okKeys: okRows.length,
             usage: okRows.reduce((sum, row) => sum + (row.usage || 0), 0),
-            planUsage: null,
-            planLimit: null,
+            planUsage: okRows.reduce((sum, row) => sum + (row.planUsage || 0), 0),
+            planLimit: okRows.every((row) => row.planLimit !== null) ? okRows.reduce((sum, row) => sum + row.planLimit, 0) : null,
           },
         })
       } catch (error) {
