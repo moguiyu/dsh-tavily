@@ -173,6 +173,29 @@ export function factory(require) {
       }
     }
 
+    const saveAdd = async (item) => {
+      const value = item.value.trim()
+      if (!value) return
+      setBusy(true)
+      setNotice(null)
+      try {
+        const response = await fetch('/api/tavily-manager', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ add: [value], remove: [], strategy })
+        })
+        const data = await response.json()
+        if (!data.ok) { setNotice({ error: data.error || 'Save failed' }); return }
+        setNotice({ ok: 'Key saved.' })
+        setAdds((current) => current.filter((entry) => entry.id !== item.id))
+        await refresh()
+      } catch (error) {
+        setNotice({ error: String(error && error.message ? error.message : error) })
+      } finally {
+        setBusy(false)
+      }
+    }
+
     const save = async () => {
       setBusy(true)
       setNotice(null)
@@ -353,12 +376,16 @@ export function factory(require) {
                         placeholder: 'New key value',
                         value: item.value,
                         onChange: (event) => setAdds((current) => current.map((entry) => entry.id === item.id ? Object.assign({}, entry, { value: event.target.value }) : entry)),
+                        onKeyDown: (event) => { if (event.key === 'Enter') saveAdd(item) },
                         disabled: busy
                       })
                     ),
                     react.createElement('td', { style: cellStyle }, '—'),
                     react.createElement('td', { style: cellStyle },
-                      react.createElement(IconButton, { icon: 'trash', title: 'Remove', danger: true, onClick: () => setAdds((current) => current.filter((entry) => entry.id !== item.id)), disabled: busy })
+                      react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
+                        react.createElement(IconButton, { icon: 'check', title: 'Save key', onClick: () => saveAdd(item), disabled: busy || item.value.trim().length === 0 }),
+                        react.createElement(IconButton, { icon: 'trash', title: 'Remove', danger: true, onClick: () => setAdds((current) => current.filter((entry) => entry.id !== item.id)), disabled: busy })
+                      )
                     )
                   ))
                 )

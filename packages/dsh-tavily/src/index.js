@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { STRATEGIES, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
+import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
 
 export const name = 'dsh-tavily'
 
