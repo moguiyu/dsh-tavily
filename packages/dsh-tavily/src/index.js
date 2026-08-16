@@ -12,6 +12,9 @@ export const name = 'dsh-tavily'
 
 export const inject = ['tools', 'webServer', 'credentials']
 
+const USAGE_TTL_MS = 60000
+const usageCache = new Map()
+
 /** Clamp a number into [min, max]; `fallback` when not finite. */
 export function clampInt(value, min, max, fallback) {
   const n = Number(value)
@@ -307,6 +310,8 @@ function readBody(req) {
 }
 
 async function fetchUsageDetailsFor(key) {
+  const cached = usageCache.get(key)
+  if (cached !== undefined && Date.now() - cached.at < USAGE_TTL_MS) return cached.details
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 15000)
@@ -337,7 +342,9 @@ async function fetchUsageDetailsFor(key) {
       ? account.plan
       : (keyUsage !== undefined && typeof keyUsage.plan === 'string' ? keyUsage.plan : null)
     if (usage === null && planUsage === null) return null
-    return { usage, planUsage, planLimit, currentPlan }
+    const details = { usage, planUsage, planLimit, currentPlan }
+    usageCache.set(key, { at: Date.now(), details })
+    return details
   } catch {
     return null
   }
