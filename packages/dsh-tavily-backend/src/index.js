@@ -85,6 +85,9 @@ async function fetchUsageDetailsFor(key) {
 async function fetchUsageFor(key) {
   const details = await fetchUsageDetailsFor(key)
   if (details === null) return null
+  if (details.planLimit !== null && details.planLimit > 0 && details.planUsage !== null) {
+    return (details.planUsage / details.planLimit) * 100
+  }
   return details.usage !== null ? details.usage : details.planUsage
 }
 
