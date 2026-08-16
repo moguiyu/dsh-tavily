@@ -8,18 +8,17 @@
 - 🔁 **Key 轮换与故障转移** — 多 Key 轮询；遇到 HTTP 401/429 自动切换下一个 Key。
 - 📊 **用量仪表盘** — 服务端获取每个 Key 的 Tavily 用量与汇总，不暴露 Key。
 - 🎛️ **设置卡片** — 添加/删除/查看 Key、选择用量策略、切换 `web_search` 提供方。
-- 🧩 **两个可安装的 DSH 包** — 模型工具 + 本地 HTTP 后端。
+- 🧩 **一个可安装的 DSH 插件** — 模型工具、设置卡片与本地后端整合在单一包中。
 
 ## 包
 
 | 包 | 作用 |
 |---|---|
-| [`@moguiyu/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | `tavily_search` 模型工具 + Tavily Search 设置卡片 |
-| [`@moguiyu/dsh-tavily-backend`](packages/dsh-tavily-backend) | 用量、Key 管理和提供方切换的本地路由 |
+| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 单一插件：`tavily_search` 工具 + 设置卡片 + 本地后端 |
 
 ## 安装
 
-最简单 — 一条命令，自动激活两个包：
+最简单 — 一条命令，一个插件：
 
 ```sh
 dsh plugin --profile web add github:moguiyu/dsh-tavily
@@ -28,8 +27,7 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 或通过 npm 安装：
 
 ```sh
-dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
-dsh plugin --profile web add @moguiyu/dsh-tavily-backend
+dsh plugin --profile web add @moguiyu/dsh-tavily
 ```
 
 如需完整 `web_search` 提供方切换，请在 `$DSH_HOME/profiles/web/cordis.patch.yml` 中添加提供方行与配置：
@@ -38,10 +36,8 @@ dsh plugin --profile web add @moguiyu/dsh-tavily-backend
 - insert:
   - id: web-search-tavily
     name: '@crayonlu/dsh-web-search-tavily'
-  - id: tool-tavily-search
-    name: '@moguiyu/dsh-tool-tavily-search'
-  - id: tavily-backend
-    name: '@moguiyu/dsh-tavily-backend'
+  - id: dsh-tavily
+    name: '@moguiyu/dsh-tavily'
 - id: web
   config:
     searchProvider: tavily

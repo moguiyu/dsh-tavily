@@ -12,8 +12,7 @@
     "build": "pnpm -r build"
   },
   "dependencies": {
-    "@moguiyu/dsh-tool-tavily-search": "^0.1.0",
-    "@moguiyu/dsh-tavily-backend": "^0.1.0"
+    "@moguiyu/dsh-tavily": "^0.1.0"
   },
   "dsh": {
     "bundle": {

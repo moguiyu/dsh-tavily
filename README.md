@@ -8,18 +8,17 @@ Tavily web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 - 🔁 **Key rotation & failover** — round-robin across keys; automatically retries on HTTP 401/429.
 - 📊 **Usage gauge** — per-key Tavily usage and totals, fetched server-side without exposing keys.
 - 🎛️ **Settings card** — add/remove/reveal keys, choose usage strategy, toggle `web_search` provider.
-- 🧩 **Two installable DSH packages** — model tool + local HTTP backend.
+- 🧩 **One installable DSH plugin** — model tool, settings card, and local backend in a single package.
 
-## Packages
+## Package
 
 | Package | Role |
 |---|---|
-| [`@moguiyu/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | `tavily_search` model tool + Tavily Search settings card |
-| [`@moguiyu/dsh-tavily-backend`](packages/dsh-tavily-backend) | Local routes for usage, key management, and provider toggle |
+| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | Single plugin: `tavily_search` tool + settings card + local backend |
 
 ## Install
 
-Easiest — one command, activates both packages:
+Easiest — one command, one plugin:
 
 ```sh
 dsh plugin --profile web add github:moguiyu/dsh-tavily
@@ -28,8 +27,7 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 Or from npm:
 
 ```sh
-dsh plugin --profile web add @moguiyu/dsh-tool-tavily-search
-dsh plugin --profile web add @moguiyu/dsh-tavily-backend
+dsh plugin --profile web add @moguiyu/dsh-tavily
 ```
 
 For full `web_search` provider switching, add the provider row and config to `$DSH_HOME/profiles/web/cordis.patch.yml`:
@@ -38,10 +36,8 @@ For full `web_search` provider switching, add the provider row and config to `$D
 - insert:
   - id: web-search-tavily
     name: '@crayonlu/dsh-web-search-tavily'
-  - id: tool-tavily-search
-    name: '@moguiyu/dsh-tool-tavily-search'
-  - id: tavily-backend
-    name: '@moguiyu/dsh-tavily-backend'
+  - id: dsh-tavily
+    name: '@moguiyu/dsh-tavily'
 - id: web
   config:
     searchProvider: tavily
