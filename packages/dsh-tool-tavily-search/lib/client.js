@@ -144,10 +144,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    const hasPending = Object.values(removing).some(Boolean)
-      || Object.values(replacing).some(Boolean)
-      || adds.some((item) => item.value.trim().length > 0)
-
     const saveStrategy = async (next) => {
       setBusy(true)
       setNotice(null)
@@ -191,29 +187,46 @@ window.__ModuleLoader__.load({
       }
     }
 
-    const save = async () => {
+    const saveRemove = async (masked) => {
       setBusy(true)
       setNotice(null)
       try {
-        const addValues = adds.map((item) => item.value.trim()).filter((value) => value.length > 0)
-        const removeMasked = [
-          ...Object.keys(removing).filter((masked) => removing[masked] === true),
-          ...Object.keys(replacing).filter((masked) => replacing[masked] === true)
-        ]
         const response = await fetch('/api/tavily-manager', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ add: addValues, remove: removeMasked, strategy })
+          body: JSON.stringify({ add: [], remove: [masked], strategy })
         })
         const data = await response.json()
-        if (!data.ok) { setNotice({ error: data.error || 'Save failed' }); return }
-        setNotice({ ok: 'Saved — effective on the next search.' })
-        setRemoving({})
-        setReplacing({})
-        setReplaceDrafts({})
-        setAdds([])
-        setRevealed({})
-        setConfirm({})
+        if (!data.ok) { setNotice({ error: data.error || 'Delete failed' }); return }
+        setNotice({ ok: 'Key removed.' })
+        setConfirm((current) => Object.assign({}, current, { [masked]: false }))
+        setRemoving((current) => Object.assign({}, current, { [masked]: false }))
+        setRevealed((current) => Object.assign({}, current, { [masked]: false }))
+        await refresh()
+      } catch (error) {
+        setNotice({ error: String(error && error.message ? error.message : error) })
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    const saveReplace = async (masked) => {
+      const value = typeof replaceDrafts[masked] === 'string' ? replaceDrafts[masked].trim() : ''
+      if (!value) return
+      setBusy(true)
+      setNotice(null)
+      try {
+        const response = await fetch('/api/tavily-manager', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ add: [value], remove: [masked], strategy })
+        })
+        const data = await response.json()
+        if (!data.ok) { setNotice({ error: data.error || 'Update failed' }); return }
+        setNotice({ ok: 'Key updated.' })
+        setReplacing((current) => Object.assign({}, current, { [masked]: false }))
+        setReplaceDrafts((current) => Object.assign({}, current, { [masked]: '' }))
+        setRevealed((current) => Object.assign({}, current, { [masked]: false }))
         await refresh()
       } catch (error) {
         setNotice({ error: String(error && error.message ? error.message : error) })
@@ -249,6 +262,7 @@ window.__ModuleLoader__.load({
       setConfirm((current) => Object.assign({}, current, { [masked]: false }))
       setRemoving((current) => Object.assign({}, current, { [masked]: true }))
       setRevealed((current) => Object.assign({}, current, { [masked]: false }))
+      saveRemove(masked)
     }
 
     const restore = (masked) => {
@@ -314,16 +328,21 @@ window.__ModuleLoader__.load({
                 react.createElement('thead', null,
                   react.createElement('tr', null,
                     react.createElement('th', { style: headStyle }, 'Key'),
+                    react.createElement('th', { style: headStyle }, 'Usage'),
                     react.createElement('th', { style: headStyle }, 'Saved'),
                     react.createElement('th', { style: headStyle }, 'Actions')
                   )
                 ),
                 react.createElement('tbody', null,
-                  (server !== null ? server.keys : []).map((key) => {
+                  (server !== null ? server.keys : []).map((key, index) => {
                     const masked = key.masked
                     const isRemoved = removing[masked] === true
                     const isReplacing = replacing[masked] === true
                     const isRevealed = typeof revealed[masked] === 'string'
+                    const usageRow = usage !== null && usage.ok === true ? usage.perKey[index] : null
+                    const pct = usageRow && usageRow.ok && usageRow.planLimit != null && usageRow.planLimit > 0 && usageRow.planUsage != null
+                      ? Math.min(100, Math.round((usageRow.planUsage / usageRow.planLimit) * 100))
+                      : null
                     return react.createElement('tr', { key: masked, style: { borderBottom: '1px solid var(--dsw-alias-border-l2)', opacity: isRemoved ? 0.45 : 1 } },
                       react.createElement('td', { style: Object.assign({}, cellStyle, { fontFamily: 'var(--ds-font-family-code, monospace)', fontSize: 12, wordBreak: 'break-all' }) },
                         isReplacing
@@ -342,11 +361,14 @@ window.__ModuleLoader__.load({
                               })
                             )
                       ),
+                      react.createElement('td', { style: cellStyle },
+                        react.createElement(UsageCircle, { percent: pct, label: pct != null ? pct + '%' : (usageRow && usageRow.ok && usageRow.planUsage != null ? String(usageRow.planUsage) : '—') })
+                      ),
                       react.createElement('td', { style: Object.assign({}, cellStyle, { color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' }) }, formatDate(key.savedAt)),
                       react.createElement('td', { style: cellStyle },
                         isReplacing
                           ? react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
-                              react.createElement(IconButton, { icon: 'check', title: 'Keep', onClick: () => { setReplacing((current) => Object.assign({}, current, { [masked]: false })) }, disabled: busy }),
+                              react.createElement(IconButton, { icon: 'check', title: 'Save key', onClick: () => saveReplace(masked), disabled: busy || (typeof replaceDrafts[masked] === 'string' ? replaceDrafts[masked].trim().length === 0 : true) }),
                               react.createElement(IconButton, { icon: 'close', title: 'Cancel', onClick: () => cancelReplace(masked), disabled: busy })
                             )
                           : react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
@@ -376,6 +398,7 @@ window.__ModuleLoader__.load({
                       })
                     ),
                     react.createElement('td', { style: cellStyle }, '—'),
+                    react.createElement('td', { style: cellStyle }, '—'),
                     react.createElement('td', { style: cellStyle },
                       react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
                         react.createElement(IconButton, { icon: 'check', title: 'Save key', onClick: () => saveAdd(item), disabled: busy || item.value.trim().length === 0 }),
@@ -385,63 +408,27 @@ window.__ModuleLoader__.load({
                   ))
                 )
               ),
-              react.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-                react.createElement('button', { type: 'button', style: btn, onClick: () => setAdds((current) => [...current, { id: 'add-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), value: '' }]), disabled: busy }, '+ Add key')
+              react.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+                react.createElement('button', { type: 'button', style: btn, onClick: () => setAdds((current) => [...current, { id: 'add-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), value: '' }]), disabled: busy }, '+ Add key'),
+                react.createElement('button', { type: 'button', style: btn, onClick: refresh, disabled: busy }, 'Refresh usage')
               ),
-              react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 } },
-                react.createElement('label', { style: { fontWeight: 500, fontSize: 13 } }, 'Key usage strategy'),
-                react.createElement('select', {
-                  style: { maxWidth: 280, height: 32, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', padding: '0 10px', fontSize: 13 },
-                  value: strategy,
-                  onChange: (event) => saveStrategy(event.target.value),
-                  disabled: busy
-                }, STRATEGIES.map((option) => react.createElement('option', { key: option.id, value: option.id }, option.label))),
-                react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
-                  (STRATEGIES.find((option) => option.id === strategy) || STRATEGIES[0]).hint + ' The strategy is saved immediately when you select it; the first key then becomes primary for web_search.'
-                )
-              ),
-              react.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-                react.createElement('button', { type: 'button', style: Object.assign({}, btn, { height: 32, background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)' }), onClick: save, disabled: busy || !hasPending }, 'Save key changes'),
-                notice !== null && react.createElement('span', { style: { fontSize: 13, color: notice.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice.ok ? notice.ok : String(notice.error))
-              ),
-              react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 } },
-                react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' } },
-                  react.createElement('span', { style: { fontWeight: 500, fontSize: 13 } }, 'Tavily Usage'),
-                  react.createElement('button', { type: 'button', style: btn, onClick: refresh, disabled: busy }, 'Refresh')
+              react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                  react.createElement('label', { style: { fontWeight: 500, fontSize: 13 } }, 'Key usage strategy'),
+                  react.createElement('select', {
+                    style: { maxWidth: 280, height: 32, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', padding: '0 10px', fontSize: 13 },
+                    value: strategy,
+                    onChange: (event) => saveStrategy(event.target.value),
+                    disabled: busy
+                  }, STRATEGIES.map((option) => react.createElement('option', { key: option.id, value: option.id }, option.label))),
+                  notice !== null && react.createElement('span', { style: { fontSize: 13, color: notice.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice.ok ? notice.ok : String(notice.error))
                 ),
-                usageError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usageError)),
-                usage !== null && usage.ok === false && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usage.error)),
-                usage !== null && usage.ok === true && react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-                  react.createElement('div', { style: { fontSize: 13 } },
-                    usage.totals.keys + ' key(s) (' + usage.totals.okKeys + ' readable)' + (usage.totals.planLimit !== null ? ' · plan usage ' + usage.totals.planUsage + ' / ' + usage.totals.planLimit : '')
-                  ),
-                  react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
-                    react.createElement('thead', null,
-                      react.createElement('tr', null,
-                        react.createElement('th', { style: headStyle }, 'API Key'),
-                        react.createElement('th', { style: headStyle }, 'Usage')
-                      )
-                    ),
-                    react.createElement('tbody', null,
-                      (server !== null ? server.keys : []).map((key, index) => {
-                        const row = usage.perKey[index]
-                        const pct = row && row.ok && row.planLimit != null && row.planLimit > 0 && row.planUsage != null
-                          ? Math.min(100, Math.round((row.planUsage / row.planLimit) * 100))
-                          : null
-                        return react.createElement('tr', { key: key.masked, style: { borderBottom: '1px solid var(--dsw-alias-border-l2)' } },
-                          react.createElement('td', { style: Object.assign({}, cellStyle, { fontFamily: 'var(--ds-font-family-code, monospace)', fontSize: 12, wordBreak: 'break-all' }) }, key.masked),
-                          react.createElement('td', { style: cellStyle },
-                            react.createElement(UsageCircle, { percent: pct, label: pct != null ? pct + '%' : (row && row.ok && row.planUsage != null ? String(row.planUsage) : '—') })
-                          )
-                        )
-                      })
-                    )
-                  )
+                react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
+                  (STRATEGIES.find((option) => option.id === strategy) || STRATEGIES[0]).hint + ' Saved immediately when selected; the first key then becomes primary for web_search.'
                 )
               ),
-              react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
-                'Usage data comes from the Tavily /usage endpoint (fetched locally; no keys are exposed).'
-              )
+              usageError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usageError)),
+              usage !== null && usage.ok === false && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usage.error))
             )
       )
     )

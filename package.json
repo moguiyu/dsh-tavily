@@ -1,6 +1,6 @@
 {
   "name": "dsh-tavily-workspace",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Tavily Search for DSH: multiple API keys, rotation/failover, usage gauge, settings card.",
   "type": "module",
