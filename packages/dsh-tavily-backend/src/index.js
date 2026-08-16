@@ -10,7 +10,7 @@ import { STRATEGIES, maskValue, parseKeyList, orderKeys, readJsonFile } from './
 
 export const name = 'tavily-backend'
 
-export const inject = ['webServer']
+export const inject = ['webServer', 'credentials']
 
 const MANAGER_STATE = 'tavily-manager.json'
 const TOGGLE_STATE = 'tavily-toggle.json'

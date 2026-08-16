@@ -14,3 +14,16 @@ perl -pi -e 's/id: "\@moguiyu\/dsh-tool-tavily-search"/id: "dsh-tool-tavily-sear
 
 echo "Updated local plugin client bundle:"
 echo "  $DEST"
+
+# Patch old local backend packages so they wait for the credentials service.
+for file in \
+  "$HOME/.dsh/profiles/node_modules/dsh-tavily-manager/src/index.js" \
+  "$HOME/.dsh/profiles/node_modules/dsh-tavily-usage/src/index.js" \
+  "$HOME/.dsh/profiles/node_modules/dsh-tavily-settings/src/index.js"
+do
+  if [ -f "$file" ]; then
+    perl -pi -e "s/export const inject = \['webServer'\]/export const inject = ['webServer', 'credentials']/" "$file"
+    echo "Patched credentials inject:"
+    echo "  $file"
+  fi
+done

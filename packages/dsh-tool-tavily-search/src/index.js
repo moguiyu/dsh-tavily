@@ -7,7 +7,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'tool-tavily-search'
 
-export const inject = ['tools']
+export const inject = ['tools', 'credentials']
 
 /** Clamp a number into [min, max]; `fallback` when not finite. */
 export function clampInt(value, min, max, fallback) {
