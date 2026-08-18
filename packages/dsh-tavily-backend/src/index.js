@@ -1,24 +1,56 @@
 /**
  * `@moguiyu/dsh-tavily-backend`: one row registering the Tavily settings
- * routes on the harness webServer, plus the persisted on/off flip for the
- * `web` provider.
+ * routes on the harness webServer. It owns key/usage management and the
+ * opt-in switch for the advanced `tavily_search` model tool. The built-in
+ * `web_search` tool is never replaced — no web search provider is registered
+ * and `web.searchProvider` is never touched.
+ *
+ * The combined `@moguiyu/dsh-tavily` package composes this same backend
+ * through {@link installBackend}, supplying a settings-namespace-aware
+ * switch instead of the standalone state-file pipeline.
  */
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { STRATEGIES, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
 
 export const name = 'tavily-backend'
 
-export const inject = ['webServer', 'credentials']
+export const inject = ['webServer', 'credentials', 'loader']
 
 const USAGE_TTL_MS = 60000
 const usageCache = new Map()
 
 const MANAGER_STATE = 'tavily-manager.json'
-const TOGGLE_STATE = 'tavily-toggle.json'
+const TOOL_STATE = 'tavily-tool.json'
+const LEGACY_TOGGLE_STATE = 'tavily-toggle.json'
 const LEGACY_STATE = 'tavily-settings.json'
 const REFS = ['TAVILY_API_KEYS', 'TAVILY_API_KEY']
+const TOOL_ROW = 'include:tool-tavily-search'
+
+export function readToolState() {
+  for (const file of [TOOL_STATE, LEGACY_TOGGLE_STATE]) {
+    const state = readState(file)
+    if (state !== null && typeof state === 'object' && typeof state.enabled === 'boolean') return state
+  }
+  return null
+}
+
+export function readToolEnabled() {
+  const state = readToolState()
+  return state === null ? false : state.enabled
+}
+
+/** Persist the advanced-tool switch (shared with the combined package). */
+export function writeToolState(enabled) {
+  writeState(TOOL_STATE, { enabled })
+}
+
+/** Restore a previously read switch state; `null` removes the file. */
+export function restoreToolState(state) {
+  if (state !== null) writeToolState(state.enabled)
+  else rmSync(statePath(TOOL_STATE), { force: true })
+}
 
 function statePath(file) {
   return join(resolveDshHome(), file)
@@ -119,9 +151,21 @@ async function collectStoredKeys(credentials) {
   return out
 }
 
-export function apply(ctx) {
+/**
+ * Register the Tavily settings routes on `ctx.webServer`:
+ * `/api/tavily-usage`, `/api/tavily-manager`, `/api/tavily-tool` (+ the
+ * backward-compatible `/api/tavily-toggle` alias). The switch is exposed
+ * through `hooks` so every consumer routes the toggle through its own
+ * persistence pipeline:
+ *
+ * - `hooks.enabled()` — current advanced-tool switch state;
+ * - `hooks.applySwitch(enabled)` — persist the choice and hot-restart the
+ *   owning row. The standalone backend restarts `include:tool-tavily-search`;
+ *   the combined package writes through the `tavily-search` settings
+ *   namespace instead.
+ */
+export function installBackend(ctx, hooks) {
   const credentials = ctx.get('credentials')
-  const loader = ctx.get('loader')
 
   const send = (res, status, payload) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' })
@@ -172,26 +216,7 @@ export function apply(ctx) {
     }
   }
 
-  // ── persisted on/off + live provider flip ───────────────────────────────────
-  async function applyProvider(enabled) {
-    if (loader === undefined) return
-    try {
-      const entry = loader.resolve('include:web')
-      if (entry !== undefined && entry !== null && entry.fiber !== undefined) {
-        await entry.fiber.update({ searchProvider: enabled ? 'tavily' : 'deepseek-official' }, true)
-      }
-    } catch (error) {
-      ctx.logger.warn('tavily-backend: web provider flip failed: %s', error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  // Re-apply the persisted choice at activation (default: enabled).
-  const toggleState = readState(TOGGLE_STATE)
-  if (toggleState.enabled === false) {
-    void applyProvider(false)
-  }
-
-  ctx.webServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/tavily-usage',
     handler: async (_req, res) => {
@@ -236,9 +261,9 @@ export function apply(ctx) {
         send(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
       }
     },
-  })
+  }), 'tavily-backend: route /api/tavily-usage')
 
-  ctx.webServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/tavily-manager',
     handler: async (req, res) => {
@@ -305,26 +330,53 @@ export function apply(ctx) {
         send(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
       }
     },
-  })
+  }), 'tavily-backend: route /api/tavily-manager')
 
-  ctx.webServer.register({
-    kind: 'exact',
-    path: '/api/tavily-toggle',
-    handler: async (req, res) => {
+  // ── advanced tool on/off (does NOT touch web.searchProvider) ──────────────
+  const toolToggleHandler = async (req, res) => {
+    try {
+      if (req.method === 'GET') {
+        return send(res, 200, { ok: true, enabled: hooks.enabled() })
+      }
+      if (req.method === 'POST') {
+        const body = await readBody(req)
+        const enabled = body !== null && typeof body === 'object' && body.enabled === true
+        await hooks.applySwitch(enabled)
+        return send(res, 200, { ok: true, enabled })
+      }
+      return send(res, 405, { ok: false, error: 'method not allowed' })
+    } catch (error) {
+      send(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
+    }
+  }
+
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/tavily-tool', handler: toolToggleHandler }), 'tavily-backend: route /api/tavily-tool')
+  // Backward-compatible alias for cards from before the provider/tool split.
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/tavily-toggle', handler: toolToggleHandler }), 'tavily-backend: route /api/tavily-toggle')
+}
+
+export function apply(ctx) {
+  const loader = ctx.get('loader')
+
+  async function applyToolEnabled(enabled) {
+    if (loader === undefined) return
+    const tool = loader.resolve(TOOL_ROW)
+    if (tool === undefined || tool === null || tool.fiber === undefined) return
+    await tool.fiber.update({ enabled }, true)
+  }
+
+  installBackend(ctx, {
+    enabled: () => readToolEnabled(),
+    async applySwitch(enabled) {
+      // Persist first: the row update restarts the tool row, whose apply()
+      // reads this file to decide whether to register.
+      const previous = readToolState()
+      writeToolState(enabled)
       try {
-        if (req.method === 'GET') {
-          return send(res, 200, { ok: true, enabled: readState(TOGGLE_STATE).enabled === true })
-        }
-        if (req.method === 'POST') {
-          const body = await readBody(req)
-          const enabled = body !== null && typeof body === 'object' && body.enabled === true
-          writeState(TOGGLE_STATE, { enabled })
-          await applyProvider(enabled)
-          return send(res, 200, { ok: true, enabled })
-        }
-        return send(res, 405, { ok: false, error: 'method not allowed' })
+        await applyToolEnabled(enabled)
       } catch (error) {
-        send(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
+        restoreToolState(previous)
+        throw error
       }
     },
   })

@@ -3,3 +3,7 @@ dist/
 *.log
 .DS_Store
 AGENTS.md
+
+# Local pnpm artifacts (CI and release use npm; the pnpm lock is not shipped)
+pnpm-lock.yaml
+.pnpm-store/

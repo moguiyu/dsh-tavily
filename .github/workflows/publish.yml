@@ -28,14 +28,9 @@ jobs:
 
       - name: Build client bundles
         run: |
-          node packages/dsh-tool-tavily-search/scripts/build-client.mjs
           node packages/dsh-tavily/scripts/build-client.mjs
 
-      - name: Publish @moguiyu/dsh-tavily
-        run: npm publish ./packages/dsh-tavily --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      # Publish dependencies first: the combined package depends on these two.
       - name: Publish @moguiyu/dsh-tool-tavily-search
         run: npm publish ./packages/dsh-tool-tavily-search --access public
         env:
@@ -43,5 +38,10 @@ jobs:
 
       - name: Publish @moguiyu/dsh-tavily-backend
         run: npm publish ./packages/dsh-tavily-backend --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @moguiyu/dsh-tavily
+        run: npm publish ./packages/dsh-tavily --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clampInt, normalizeArgs } from '../src/index.js'
+import { clampInt, isToolEnabled, normalizeArgs } from '../src/index.js'
 
 test('clampInt', () => {
   assert.equal(clampInt(3, 1, 20, 5), 3)
@@ -41,4 +41,14 @@ test('normalizeArgs: domain filters', () => {
   const args = normalizeArgs({ query: 'x', include_domains: ['a.com', '', 42], exclude_domains: 'nope' })
   assert.deepEqual(args.includeDomains, ['a.com'])
   assert.deepEqual(args.excludeDomains, [])
+})
+
+test('isToolEnabled: persisted state wins over plugin config', () => {
+  assert.equal(isToolEnabled({ enabled: true }, { enabled: false }), false)
+  assert.equal(isToolEnabled({ enabled: false }, { enabled: true }), true)
+})
+
+test('isToolEnabled: falls back to plugin config when no state is stored', () => {
+  assert.equal(isToolEnabled({ enabled: true }, null), true)
+  assert.equal(isToolEnabled({ enabled: false }, null), false)
 })

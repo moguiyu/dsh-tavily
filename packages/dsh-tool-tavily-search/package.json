@@ -1,19 +1,17 @@
 {
   "name": "@moguiyu/dsh-tool-tavily-search",
-  "version": "0.1.10",
-  "description": "Tavily-backed web search for the DeepSeek Harness: rotation-aware tavily_search model tool plus the Tavily Search settings card (keys, usage strategy, usage gauge, on/off switch).",
+  "version": "0.1.11",
+  "description": "Opt-in advanced tavily_search model tool for DeepSeek Harness, with key rotation/failover. Install @moguiyu/dsh-tavily for the Tavily Search settings card.",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./invariant": "./src/invariant.js",
-    "./client": "./lib/client.js",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "src",
-    "lib",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
@@ -25,17 +23,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "client": {
-      "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-settings"
-      ]
     }
   },
   "scripts": {
-    "build": "node scripts/build-client.mjs",
     "test": "node --test"
   },
   "keywords": [
@@ -52,6 +42,13 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.7",
+    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.7"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.7"
   }
 }

@@ -1,2 +1,8 @@
+# Workspace packages plus pnpm link settings: sibling @moguiyu/* packages are
+# linked from this workspace instead of resolved from the npm registry
+# (preferWorkspacePackages keeps the workspace copy winning even after a
+# registry release).
 packages:
   - packages/*
+linkWorkspacePackages: true
+preferWorkspacePackages: true

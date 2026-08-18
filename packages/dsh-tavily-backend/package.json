@@ -1,12 +1,13 @@
 {
   "name": "@moguiyu/dsh-tavily-backend",
-  "version": "0.1.10",
-  "description": "Tavily settings backend for the DeepSeek Harness: usage endpoint, flat key-list manager with usage strategies, and the web_search on/off toggle.",
+  "version": "0.1.11",
+  "description": "Tavily settings backend for DeepSeek Harness: usage endpoint, flat key-list manager, and the opt-in advanced tavily_search tool switch.",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
     "./invariant": "./src/invariant.js",
+    "./lib": "./src/lib.js",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -41,6 +42,6 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.7"
   }
 }

@@ -1,18 +1,26 @@
-# @moguiyu/dsh-tool-tavily-search
+# @moguiyu/dsh-tavily
 
-Registers the `tavily_search` model tool and the **Tavily Search** settings card for the
-DeepSeek Harness web UI.
+Combined plugin: the opt-in advanced `tavily_search` model tool, the **Tavily Search**
+settings card, and the local HTTP backend for key/usage management.
 
 - **`tavily_search`** — full Tavily surface (`max_results`, `search_depth`, `topic`, `days`,
-  `include_answer`, `include_raw_content`, `include_domains`, `exclude_domains`). Keys are
-  resolved from the `TAVILY_API_KEYS` credential on every call; round-robin rotation with
-  failover on HTTP 401/429.
-- **Settings card** (`settings.plugin.item`, id `tavily-search`) — expandable card matching
-  the native plugin-config design: flat key list (masked values, saved dates, show/edit/delete
-  icons), key-usage strategy selector, usage gauge, and the on/off switch for the `web`
-  provider.
+  `include_answer`, `include_raw_content`, `include_domains`, `exclude_domains`). Opt-in and
+  off by default.
+- **Settings card** — key list, usage gauge, strategy selector, and the advanced-tool switch.
+- **rc.7 plugin management** — the Host registers the `tavily-search` settings namespace and
+  the card is keyed by it (keyed `settings.plugin.item`), so the Plugins configuration tab
+  serves the card exactly when this plugin is composed. The switch writes the namespace and
+  restarts the row; the choice is mirrored to `~/.dsh/tavily-tool.json`.
+- **`web_search` is never replaced** — no `ctx.web` provider is registered and
+  `web.searchProvider` is never rewritten; the built-in DeepSeek `web_search` keeps its
+  native provider and schema. Tavily is an extra, opt-in search option.
 
 Host half: plain ESM (`src/index.js`). Client half: prebuilt `window.__ModuleLoader__` bundle
 at `lib/client.js`, generated from `src/client.js` via `pnpm build`.
+
+The host half composes the two standalone packages instead of carrying a second copy of the
+implementation: the tool comes from [`@moguiyu/dsh-tool-tavily-search`](../dsh-tool-tavily-search)
+and the routes/switch pipeline from [`@moguiyu/dsh-tavily-backend`](../dsh-tavily-backend).
+Both are regular dependencies, installed automatically with this package.
 
 See the [workspace README](../../README.md) for install and configuration.

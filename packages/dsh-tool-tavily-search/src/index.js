@@ -1,13 +1,48 @@
 /**
- * `@moguiyu/dsh-tool-tavily-search` host half: the `tavily_search` model tool.
- * Keys resolve from the `TAVILY_API_KEYS` credential per call; rotation is
- * round-robin with failover on 401/429. HTTP goes through global fetch (Node 22+).
+ * `@moguiyu/dsh-tool-tavily-search` host half: the advanced `tavily_search`
+ * model tool. Keys resolve from the `TAVILY_API_KEYS` credential per call;
+ * rotation is round-robin with failover on 401/429.
+ *
+ * This tool is OPT-IN and defaults to off. It is independent of the built-in
+ * `web_search` provider: enabling it never changes `web.searchProvider`.
+ * The settings card persists the choice in `~/.dsh/tavily-tool.json`; the
+ * backend package hot-restarts this row after a toggle.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'tool-tavily-search'
 
-export const inject = ['tools', 'credentials']
+export const inject = ['tools', 'credentials', 'systemPrompt']
+
+export const Config = z.object({
+  enabled: z.boolean().default(false),
+})
+
+const TOOL_STATE = 'tavily-tool.json'
+const LEGACY_TOGGLE_STATE = 'tavily-toggle.json'
+
+/** Read the persisted advanced-tool switch; `null` when absent or unreadable. */
+export function readToolState() {
+  for (const file of [TOOL_STATE, LEGACY_TOGGLE_STATE]) {
+    try {
+      const parsed = JSON.parse(readFileSync(join(resolveDshHome(), file), 'utf8'))
+      if (parsed !== null && typeof parsed === 'object' && typeof parsed.enabled === 'boolean') return parsed
+    } catch {
+      /* fall through to the next source */
+    }
+  }
+  return null
+}
+
+/** The persisted switch wins; otherwise the plugin config decides. */
+export function isToolEnabled(config, state = readToolState()) {
+  if (state !== null) return state.enabled
+  return config.enabled !== false
+}
 
 /** Clamp a number into [min, max]; `fallback` when not finite. */
 export function clampInt(value, min, max, fallback) {
@@ -158,7 +193,13 @@ function formatOutput(value) {
   return parts.join('\n\n')
 }
 
-export function apply(ctx) {
+/**
+ * Register the `tavily_search` model tool on `ctx`. Call only when the tool
+ * is enabled — `apply` guards with {@link isToolEnabled}. Shared with the
+ * combined `@moguiyu/dsh-tavily` package so the tool implementation lives in
+ * exactly one place.
+ */
+export function installTavilyTool(ctx) {
   let rotation = 0
 
   async function resolveKeys() {
@@ -267,4 +308,9 @@ export function apply(ctx) {
       ctx.logger.warn('tavily_search: credential describe failed: %s', error instanceof Error ? error.message : String(error))
     })
   }
+}
+
+export function apply(ctx, config) {
+  if (!isToolEnabled(config)) return
+  installTavilyTool(ctx)
 }

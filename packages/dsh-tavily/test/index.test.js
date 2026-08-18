@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { clampInt, normalizeArgs } from '../src/index.js'
-import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from '../src/lib.js'
+import { clampInt, isToolEnabled, normalizeArgs } from '@moguiyu/dsh-tool-tavily-search'
+import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from '@moguiyu/dsh-tavily-backend/lib'
+import { TAVILY_NS } from '../src/index.js'
 
 test('clampInt', () => {
   assert.equal(clampInt(3, 1, 20, 5), 3)
@@ -55,4 +56,18 @@ test('readJsonFile: missing or broken file falls back', () => {
   const broken = join(dir, 'broken.json')
   writeFileSync(broken, 'not json')
   assert.deepEqual(readJsonFile(broken, { x: 1 }), { x: 1 })
+})
+
+test('isToolEnabled: persisted state wins over plugin config', () => {
+  assert.equal(isToolEnabled({ enabled: true }, { enabled: false }), false)
+  assert.equal(isToolEnabled({ enabled: false }, { enabled: true }), true)
+})
+
+test('isToolEnabled: falls back to plugin config when no state is stored', () => {
+  assert.equal(isToolEnabled({ enabled: true }, null), true)
+  assert.equal(isToolEnabled({ enabled: false }, null), false)
+})
+
+test('TAVILY_NS is the rc.7 plugin-management namespace join key', () => {
+  assert.equal(TAVILY_NS, 'tavily-search')
 })

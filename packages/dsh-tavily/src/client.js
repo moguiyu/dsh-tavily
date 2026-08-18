@@ -102,7 +102,7 @@ export function factory(require) {
 
     const refresh = react.useCallback(async () => {
       try {
-        const response = await fetch('/api/tavily-toggle', { cache: 'no-store' })
+        const response = await fetch('/api/tavily-tool', { cache: 'no-store' })
         const data = await response.json()
         if (data.ok) { setEnabled(data.enabled); setLoadError(null) } else { setLoadError(data.error || 'Failed to load settings') }
       } catch (error) {
@@ -132,7 +132,7 @@ export function factory(require) {
       setBusy(true)
       setNotice(null)
       try {
-        const response = await fetch('/api/tavily-toggle', {
+        const response = await fetch('/api/tavily-tool', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ enabled: next })
@@ -140,7 +140,7 @@ export function factory(require) {
         const data = await response.json()
         if (!data.ok) { setNotice({ error: data.error || 'Switch failed' }); return }
         setEnabled(data.enabled)
-        setNotice({ ok: data.enabled ? 'Tavily search enabled — web_search uses Tavily.' : 'Tavily search off — web_search uses the native provider (DeepSeek). No Tavily key is needed.' })
+        setNotice({ ok: data.enabled ? 'Advanced tavily_search tool enabled.' : 'Advanced tavily_search tool disabled — built-in web_search is unchanged.' })
       } catch (error) {
         setNotice({ error: String(error && error.message ? error.message : error) })
       } finally {
@@ -300,10 +300,10 @@ export function factory(require) {
           style: { flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2, font: 'inherit', color: 'inherit' }
         },
           react.createElement('strong', { style: { fontSize: 14, fontWeight: 600, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Tavily Search'),
-          react.createElement('span', { style: { fontSize: 12, lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Tavily-backed web_search · key rotation · usage')
+          react.createElement('span', { style: { fontSize: 12, lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Advanced tavily_search tool · key rotation · usage')
         ),
         react.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none' } },
-          react.createElement(Switch, { checked: enabled, disabled: busy, label: 'Tavily search enabled', onChange: toggleEnabled }),
+          react.createElement(Switch, { checked: enabled, disabled: busy, label: 'Advanced tavily_search tool enabled', onChange: toggleEnabled }),
           react.createElement('button', {
             type: 'button',
             className: 'dts-icon-btn',
@@ -321,11 +321,11 @@ export function factory(require) {
       expanded && react.createElement('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 16 } },
         isOff
           ? react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
-              'Tavily search is off — web_search uses the native provider (DeepSeek). No Tavily key is needed.'
+              'The advanced tavily_search tool is off. The built-in web_search keeps its native provider and is never replaced.'
             )
           : react.createElement(react.Fragment, null,
               react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
-                'All keys are listed below; the key marked with the green dot is the primary key used by web_search. The tavily_search tool uses all keys according to the strategy. Changes take effect on the next search.'
+                'All keys are listed below; the green dot marks the first (primary) key. The tavily_search tool uses all keys according to the strategy. Built-in web_search is unaffected.'
               ),
               loadError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(loadError)),
               react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
@@ -362,7 +362,7 @@ export function factory(require) {
                           : react.createElement('span', null,
                               isRevealed ? revealed[masked] : masked,
                               key.primary === true && !isRemoved && react.createElement('span', {
-                                title: 'Primary — used by web_search',
+                                title: 'Primary — the first key in the rotation',
                                 style: { display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: 'var(--dsw-alias-state-success-primary)', marginLeft: 8, verticalAlign: 'middle', flex: 'none' }
                               })
                             )
@@ -442,6 +442,11 @@ export function factory(require) {
   function apply(ctx) {
     ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
       name: 'settings.plugin.item',
+      // rc.7 plugin management: this card is keyed by the settings namespace
+      // the Host serves (`tavily-search`); the Plugins configuration tab
+      // dispatches it when the namespace is present. The id/order/label props
+      // keep rc.6 list-slot deployments rendering the card as well.
+      key: 'tavily-search',
       id: 'tavily-search',
       order: 30,
       label: 'Tavily Search'
