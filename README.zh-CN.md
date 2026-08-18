@@ -7,14 +7,15 @@
 - 🔑 **多 Tavily API Key** — 在 DSH 设置界面中管理扁平化 Key 列表。
 - 🔁 **Key 轮换与故障转移** — 多 Key 轮询；遇到 HTTP 401/429 自动切换下一个 Key。
 - 📊 **用量仪表盘** — 服务端获取每个 Key 的 Tavily 用量与汇总，不暴露 Key。
-- 🎛️ **设置卡片** — 添加/删除/查看 Key、选择用量策略、切换 `web_search` 提供方。
-- 🧩 **一个可安装的 DSH 插件** — 模型工具、设置卡片与本地后端整合在单一包中。
+- 🎛️ **设置卡片** — 添加/删除/查看 Key、选择用量策略并查看用量。
+- 🧩 **原生网页搜索提供方** — 通过 Tavily 提供 DSH 内置的 `web_search`。
+- 🛠️ **Tavily 检索工具** — 添加 `tavily_extract`、`tavily_map` 与 `tavily_crawl`。
 
 ## 包
 
 | 包 | 作用 |
 |---|---|
-| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 单一插件：`tavily_search` 工具 + 设置卡片 + 本地后端 |
+| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | Tavily `web_search` 提供方、三个独立检索工具、设置卡片与本地后端 |
 
 ## 安装
 
@@ -30,12 +31,10 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 dsh plugin --profile web add @moguiyu/dsh-tavily
 ```
 
-如需完整 `web_search` 提供方切换，请在 `$DSH_HOME/profiles/web/cordis.patch.yml` 中添加提供方行与配置：
+插件的 bundle 配置会将 DSH 原生 `web_search` 指向 Tavily。若 profile 覆盖了网页搜索提供方，请保留：
 
 ```yaml
 - insert:
-  - id: web-search-tavily
-    name: '@crayonlu/dsh-web-search-tavily'
   - id: dsh-tavily
     name: '@moguiyu/dsh-tavily'
 - id: web
@@ -45,10 +44,16 @@ dsh plugin --profile web add @moguiyu/dsh-tavily
 
 刷新浏览器后，卡片会出现在 **Settings → Plugins → plugin configuration**（`tavily-search`）。
 
+## 从 0.1.x 迁移
+
+0.2.0 将直接提供的 `tavily_search` 模型工具替换为 DSH 原生 `web_search` provider，并新增 `tavily_extract`、`tavily_map` 和 `tavily_crawl`。
+
+安装 `@moguiyu/dsh-tavily` 前，请从 DSH profile 中移除 `@moguiyu/dsh-tool-tavily-search` 与 `@moguiyu/dsh-tavily-backend`。不要与旧包同时安装：它们会注册相同的设置卡片和后端路由。已有的 `TAVILY_API_KEYS` 凭据和 `tavily-manager.json` 状态会被复用。
+
 ## 凭据
 
-- `TAVILY_API_KEYS` — `tavily_search` 使用的逗号分隔 Key 列表
-- `TAVILY_API_KEY` — 自动同步为首个 Key 的主 Key，供 `web_search` 使用
+- `TAVILY_API_KEYS` — `web_search`、`tavily_extract`、`tavily_map`、`tavily_crawl` 使用的逗号分隔 Key 列表
+- `TAVILY_API_KEY` — 旧版单 Key 回退值，会自动同步为首个托管 Key
 
 两者都由设置卡片自动管理。
 
@@ -57,14 +62,18 @@ dsh plugin --profile web add @moguiyu/dsh-tavily
 - **轮流使用每个 Key** — 轮询；遇到 401/429 自动尝试下一个。
 - **按用量最少优先 / 用量最多优先** — 保存时按 Tavily 实时用量重新排序。
 
-## 开关
+## 模型工具
 
-在内置 `web_search` 的 `tavily` 与原生 `deepseek-official` 提供方之间切换。选择会持久化到 `~/.dsh/tavily-toggle.json`。
+启用插件后，模型会收到以下全部 Tavily 相关工具：
+
+- `web_search` — 由 Tavily provider 支持的 DSH 原生网页搜索工具。
+- `tavily_extract` — 获取已知 URL 的完整内容。
+- `tavily_map` — 发现网站中的 URL。
+- `tavily_crawl` — 发现并提取网站中的内容。
 
 ## 状态文件
 
 - `~/.dsh/tavily-manager.json` — Key 保存日期 + 策略
-- `~/.dsh/tavily-toggle.json` — `{ "enabled": boolean }`
 
 权限 `600`，不保存密钥。
 

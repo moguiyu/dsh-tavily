@@ -1,8 +1,8 @@
 {
   "name": "dsh-tavily-workspace",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "private": true,
-  "description": "Tavily Search for DSH: multiple API keys, rotation/failover, usage gauge, settings card.",
+  "description": "Tavily web_search provider for DSH with extract, map, crawl, key rotation, usage gauge, and settings.",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -12,7 +12,7 @@
     "build": "pnpm -r build"
   },
   "dependencies": {
-    "@moguiyu/dsh-tavily": "^0.1.0"
+    "@moguiyu/dsh-tavily": "^0.2.0"
   },
   "dsh": {
     "bundle": {

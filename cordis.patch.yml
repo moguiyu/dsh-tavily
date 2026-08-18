@@ -1,3 +1,6 @@
 - insert:
   - id: dsh-tavily
     name: '@moguiyu/dsh-tavily'
+- id: web
+  config:
+    searchProvider: tavily

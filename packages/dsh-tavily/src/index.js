@@ -1,283 +1,278 @@
 /**
- * `@moguiyu/dsh-tavily` combined host half: `tavily_search` model tool plus
- * the local HTTP backend for usage, key management, and the web provider toggle.
+ * `@moguiyu/dsh-tavily` host half: a Tavily `web_search` provider plus direct
+ * extract, map, and crawl tools with local key management.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
+import { TavilySearchProvider } from './provider.js'
+import { TavilyApiClient } from './tavily.js'
 
 export const name = 'dsh-tavily'
 
-export const inject = ['tools', 'webServer', 'credentials']
+export const inject = ['tools', 'web', 'webServer', 'credentials']
 
 const USAGE_TTL_MS = 60000
 const usageCache = new Map()
 
-/** Clamp a number into [min, max]; `fallback` when not finite. */
-export function clampInt(value, min, max, fallback) {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return fallback
-  return Math.min(max, Math.max(min, Math.round(n)))
-}
-
-/** Normalize and validate model arguments (exported for tests). */
-export function normalizeArgs(args) {
-  const query = typeof args.query === 'string' ? args.query.trim() : ''
-  if (query.length === 0) throw new Error('tavily_search: query must be a non-empty string')
-  const maxResults = clampInt(args.max_results, 1, 20, 5)
-  const searchDepth = args.search_depth === 'advanced' ? 'advanced' : 'basic'
-  const topic = args.topic === 'news' ? 'news' : 'general'
-  const days = args.days === undefined ? undefined : clampInt(args.days, 1, 30, undefined)
-  const includeAnswer = args.include_answer === true
-  const includeRawContent = args.include_raw_content === true
-  const includeDomains = Array.isArray(args.include_domains)
-    ? args.include_domains.filter((d) => typeof d === 'string' && d.length > 0)
-    : []
-  const excludeDomains = Array.isArray(args.exclude_domains)
-    ? args.exclude_domains.filter((d) => typeof d === 'string' && d.length > 0)
-    : []
-  return { query, maxResults, searchDepth, topic, days, includeAnswer, includeRawContent, includeDomains, excludeDomains }
-}
-
-function hostnameOf(url) {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
-
-/** Combine a caller signal with a hard timeout; call dispose() after the request. */
-function combineSignals(signal, ms) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
-  const onAbort = () => controller.abort()
-  if (signal !== undefined && signal !== null) {
-    if (signal.aborted) controller.abort()
-    else signal.addEventListener('abort', onAbort, { once: true })
-  }
-  return {
-    signal: controller.signal,
-    dispose() {
-      clearTimeout(timer)
-      if (signal !== undefined && signal !== null) signal.removeEventListener('abort', onAbort)
-    },
-  }
-}
-
-function buildBody(input) {
-  const body = {
-    query: input.query,
-    max_results: input.maxResults,
-    search_depth: input.searchDepth,
-  }
-  if (input.topic === 'news') {
-    body.topic = 'news'
-    if (input.days !== undefined) body.days = input.days
-  }
-  if (input.includeAnswer) body.include_answer = true
-  if (input.includeRawContent) body.include_raw_content = true
-  if (input.includeDomains.length > 0) body.include_domains = input.includeDomains
-  if (input.excludeDomains.length > 0) body.exclude_domains = input.excludeDomains
-  return body
-}
-
-async function callTavily(input, key, exec) {
-  const combined = combineSignals(exec.signal, 30000)
-  try {
-    const response = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
-        authorization: 'Bearer ' + key,
-        'user-agent': 'dsh-tool-tavily-search/0.1.0',
-      },
-      body: JSON.stringify(buildBody(input)),
-      signal: combined.signal,
-    })
-    if (response.status === 401 || response.status === 429) {
-      return { kind: 'retryable', statusCode: response.status }
-    }
-    if (!response.ok) {
-      let message = 'HTTP ' + response.status
-      try {
-        const parsed = await response.json()
-        if (parsed !== null && typeof parsed === 'object') {
-          if (typeof parsed.error === 'string') message = parsed.error
-          else if (parsed.error !== null && typeof parsed.error === 'object' && typeof parsed.error.message === 'string') message = parsed.error.message
-        }
-      } catch {
-        /* keep the status message */
-      }
-      throw new Error('tavily_search: ' + message)
-    }
-    return { kind: 'ok', statusCode: response.status, json: await response.json() }
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('tavily_search: request timed out or was aborted')
-    }
-    throw error
-  } finally {
-    combined.dispose()
-  }
-}
-
-function projectResults(json) {
-  const results = Array.isArray(json.results) ? json.results : []
-  const mapped = results.map((r) => {
-    const item = { url: String(r.url !== undefined && r.url !== null ? r.url : '') }
-    if (typeof r.title === 'string' && r.title.length > 0) item.title = r.title
-    if (typeof r.content === 'string' && r.content.length > 0) item.content = r.content
-    if (typeof r.score === 'number') item.score = r.score
-    if (typeof r.published_date === 'string' && r.published_date.length > 0) item.publishedAt = r.published_date
-    if (typeof r.raw_content === 'string' && r.raw_content.length > 0) {
-      item.rawContent = r.raw_content.length > 4000 ? r.raw_content.slice(0, 4000) + '…' : r.raw_content
-    }
-    return item
-  })
-  const value = { results: mapped }
-  if (typeof json.answer === 'string' && json.answer.length > 0) value.answer = json.answer
+function requiredUrlValue(input, name) {
+  const value = typeof input === 'string' ? input.trim() : ''
+  if (!URL.canParse(value)) throw new Error(name + ' must be an absolute URL')
+  const protocol = new URL(value).protocol
+  if (protocol !== 'http:' && protocol !== 'https:') throw new Error(name + ' must use HTTP or HTTPS')
   return value
 }
 
-function formatOutput(value) {
-  const parts = []
-  if (typeof value.answer === 'string' && value.answer.length > 0) parts.push(value.answer)
-  if (value.results.length > 0) {
-    const lines = value.results.map((r) => {
-      const label = typeof r.title === 'string' && r.title.length > 0 ? r.title : hostnameOf(r.url)
-      const meta = []
-      if (typeof r.content === 'string' && r.content.length > 0) meta.push(r.content)
-      if (typeof r.publishedAt === 'string' && r.publishedAt.length > 0) meta.push('(' + r.publishedAt + ')')
-      if (typeof r.score === 'number') meta.push('(relevance ' + r.score.toFixed(2) + ')')
-      const suffix = meta.length > 0 ? ' — ' + meta.join(' ') : ''
-      return '- [' + label + '](' + r.url + ')' + suffix
-    })
-    parts.push('Sources:\n' + lines.join('\n'))
-  } else {
-    parts.push('No results found.')
-  }
-  parts.push('Cite the relevant URLs above as markdown links in your answer.')
-  return parts.join('\n\n')
+function requiredUrl(args, name) {
+  return requiredUrlValue(args[name], name)
 }
 
-export function apply(ctx) {
-  applyBackend(ctx)
+function requiredUrls(args) {
+  if (!Array.isArray(args.urls) || args.urls.length === 0) throw new Error('urls must contain at least one URL')
+  return args.urls.map((value, index) => requiredUrlValue(value, 'urls[' + index + ']'))
+}
 
-  let rotation = 0
+function optionalString(args, name) {
+  if (args[name] === undefined) return undefined
+  if (typeof args[name] !== 'string' || args[name].trim().length === 0) throw new Error(name + ' must be a non-empty string')
+  return args[name].trim()
+}
 
-  async function resolveKeys() {
-    const credentials = ctx.get('credentials')
-    if (credentials !== undefined) {
-      try {
-        const resolved = await credentials.resolve('TAVILY_API_KEYS')
-        if (resolved !== undefined && typeof resolved.value === 'string' && resolved.value.length > 0) {
-          const list = resolved.value.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
-          if (list.length > 0) return { keys: list, source: resolved.source }
-        }
-      } catch (error) {
-        ctx.logger.warn('tavily_search: credential resolution failed: %s', error instanceof Error ? error.message : String(error))
-      }
+function optionalStringList(args, name) {
+  if (args[name] === undefined) return undefined
+  if (!Array.isArray(args[name])) throw new Error(name + ' must be an array of non-empty strings')
+  return args[name].map((value, index) => {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new Error(name + '[' + index + '] must be a non-empty string')
     }
-    return { keys: [], source: 'unconfigured' }
+    return value.trim()
+  })
+}
+
+function optionalPositiveInt(args, name) {
+  if (args[name] === undefined) return undefined
+  if (!Number.isInteger(args[name]) || args[name] < 1) throw new Error(name + ' must be a positive integer')
+  return args[name]
+}
+
+function optionalBoolean(args, name) {
+  if (args[name] === undefined) return undefined
+  if (typeof args[name] !== 'boolean') throw new Error(name + ' must be a boolean')
+  return args[name]
+}
+
+function include(body, key, value) {
+  if (value !== undefined) body[key] = value
+  return body
+}
+
+function navigationRequest(args, { crawl }) {
+  const body = { url: requiredUrl(args, 'url') }
+  include(body, 'instructions', optionalString(args, 'instructions'))
+  include(body, 'max_depth', optionalPositiveInt(args, 'max_depth'))
+  include(body, 'max_breadth', optionalPositiveInt(args, 'max_breadth'))
+  include(body, 'limit', optionalPositiveInt(args, 'limit'))
+  include(body, 'select_paths', optionalStringList(args, 'select_paths'))
+  include(body, 'select_domains', optionalStringList(args, 'select_domains'))
+  include(body, 'allow_external', optionalBoolean(args, 'allow_external'))
+  if (crawl) {
+    include(body, 'extract_depth', args.extract_depth)
+    include(body, 'format', args.format)
+    include(body, 'include_favicon', optionalBoolean(args, 'include_favicon'))
+    include(body, 'chunks_per_source', optionalPositiveInt(args, 'chunks_per_source'))
   }
+  return body
+}
 
-  async function execute(args, exec) {
-    const input = normalizeArgs(args)
-    const { keys, source } = await resolveKeys()
-    if (keys.length === 0) {
-      throw new Error('tavily_search: TAVILY_API_KEYS is not configured — add it via the Tavily Search settings card or ~/.dsh/.credentials.yaml (comma-separated)')
+function projectPage(result) {
+  if (result === null || typeof result !== 'object' || typeof result.url !== 'string' || result.url.length === 0) return undefined
+  return {
+    url: result.url,
+    ...(typeof result.raw_content === 'string' ? { rawContent: result.raw_content } : {}),
+    ...(Array.isArray(result.images) ? { images: result.images.filter((image) => typeof image === 'string') } : {}),
+    ...(typeof result.favicon === 'string' ? { favicon: result.favicon } : {}),
+  }
+}
+
+function projectPages(response) {
+  return Array.isArray(response?.results) ? response.results.flatMap((result) => {
+    const page = projectPage(result)
+    return page === undefined ? [] : [page]
+  }) : []
+}
+
+function projectFailures(response) {
+  return Array.isArray(response?.failed_results) ? response.failed_results.flatMap((result) => {
+    if (result === null || typeof result !== 'object') return []
+    const value = {
+      ...(typeof result.url === 'string' ? { url: result.url } : {}),
+      ...(typeof result.error === 'string' ? { error: result.error } : {}),
     }
-    const attempts = keys.length
-    let lastRetryable = 0
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      const index = (rotation + attempt) % keys.length
-      const key = keys[index]
-      const started = Date.now()
-      const outcome = await callTavily(input, key, exec)
-      if (outcome.kind === 'ok') {
-        rotation = (index + 1) % keys.length
-        const count = Array.isArray(outcome.json.results) ? outcome.json.results.length : 0
-        ctx.logger.info('tavily_search: ok %j', { query: input.query, status: outcome.statusCode, results: count, ms: Date.now() - started, keys: keys.length, source })
-        return projectResults(outcome.json)
+    return Object.keys(value).length === 0 ? [] : [value]
+  }) : []
+}
+
+function responseTime(response) {
+  return typeof response?.response_time === 'number' ? response.response_time : undefined
+}
+
+function renderJson(_args, value) {
+  return [{ type: 'text', text: JSON.stringify(value, null, 2) }]
+}
+
+const PAGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    url: { type: 'string', required: true },
+    rawContent: { type: 'string' },
+    images: { type: 'array', items: { type: 'string' } },
+    favicon: { type: 'string' },
+  },
+}
+
+const EXTRACT_OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    results: { type: 'array', required: true, items: PAGE_SCHEMA },
+    failedResults: {
+      type: 'array',
+      required: true,
+      items: { type: 'object', additionalProperties: false, properties: { url: { type: 'string' }, error: { type: 'string' } } },
+    },
+    responseTime: { type: 'number' },
+  },
+}
+
+const MAP_OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    baseUrl: { type: 'string' },
+    urls: { type: 'array', required: true, items: { type: 'string' } },
+    responseTime: { type: 'number' },
+  },
+}
+
+const CRAWL_OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    baseUrl: { type: 'string' },
+    results: { type: 'array', required: true, items: PAGE_SCHEMA },
+    responseTime: { type: 'number' },
+  },
+}
+
+/** Resolve the configured key list, retaining the legacy primary-key fallback. */
+export async function resolveTavilyKeys(ctx) {
+  const credentials = ctx.get('credentials')
+  if (credentials === undefined) return []
+  for (const ref of ['TAVILY_API_KEYS', 'TAVILY_API_KEY']) {
+    const resolved = await credentials.resolve(ref)
+    if (resolved !== undefined && typeof resolved.value === 'string') {
+      const keys = parseKeyList(resolved.value)
+      if (keys.length > 0) return keys
+    }
+  }
+  return []
+}
+
+/** Register the Tavily provider and Tavily's extract, map, and crawl model tools. */
+export function apply(ctx) {
+  const client = new TavilyApiClient({ resolveKeys: () => resolveTavilyKeys(ctx) })
+  ctx.web.registerSearchProvider(new TavilySearchProvider(client))
+
+  ctx.tools.register(defineTool({
+    name: 'tavily_extract',
+    description: 'Extract complete content from one or more HTTP(S) URLs through Tavily. Use it to retrieve pages directly when a URL is known.',
+    parameters: {
+      urls: { type: 'array', required: true, items: { type: 'string' }, description: 'HTTP(S) URLs to extract.' },
+      extract_depth: { type: 'string', enum: ['basic', 'advanced'], description: 'Extraction depth. Advanced retrieves more page structure.' },
+      include_images: { type: 'boolean', description: 'Include extracted image URLs.' },
+      format: { type: 'string', enum: ['markdown', 'text'], description: 'Content format.' },
+      include_favicon: { type: 'boolean', description: 'Include favicon URLs when Tavily provides them.' },
+      query: { type: 'string', description: 'Optional intent used to rank extracted chunks by relevance.' },
+    },
+    output: { schema: EXTRACT_OUTPUT_SCHEMA, render: renderJson },
+    timeoutMs: 60000,
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const body = { urls: requiredUrls(args) }
+      include(body, 'extract_depth', args.extract_depth)
+      include(body, 'include_images', optionalBoolean(args, 'include_images'))
+      include(body, 'format', args.format)
+      include(body, 'include_favicon', optionalBoolean(args, 'include_favicon'))
+      include(body, 'query', optionalString(args, 'query'))
+      const response = await client.request('extract', body, exec.signal)
+      return {
+        results: projectPages(response),
+        failedResults: projectFailures(response),
+        ...(responseTime(response) === undefined ? {} : { responseTime: responseTime(response) }),
       }
-      lastRetryable = outcome.statusCode
-      rotation = (index + 1) % keys.length
-      ctx.logger.info('tavily_search: key %d/%d returned HTTP %d, rotating', index + 1, keys.length, outcome.statusCode)
-    }
-    throw new Error('tavily_search: all ' + attempts + ' configured key(s) failed with HTTP ' + lastRetryable + ' (invalid key or rate limit)')
+    },
+  }))
+
+  const navigationParameters = {
+    url: { type: 'string', required: true, description: 'The HTTP(S) URL to map or crawl.' },
+    instructions: { type: 'string', description: 'Natural-language guidance for which pages to include.' },
+    max_depth: { type: 'number', description: 'Maximum link depth to explore.' },
+    max_breadth: { type: 'number', description: 'Maximum links to follow from one page.' },
+    limit: { type: 'number', description: 'Maximum pages to process.' },
+    select_paths: { type: 'array', items: { type: 'string' }, description: 'URL path regular expressions to include.' },
+    select_domains: { type: 'array', items: { type: 'string' }, description: 'Domain regular expressions to include.' },
+    allow_external: { type: 'boolean', description: 'Whether to include external links.' },
   }
 
   ctx.tools.register(defineTool({
-    name: 'tavily_search',
-    description: 'Search the web through the Tavily API. Returns ranked results with titles, URLs, snippets, relevance scores, and an optional generated answer. Supports basic/advanced depth, news topic with a freshness window, and domain allow/deny filters.',
-    parameters: {
-      query: { type: 'string', required: true, description: 'The search query.' },
-      max_results: { type: 'number', description: 'Number of results to return, 1-20 (default 5).' },
-      search_depth: { type: 'string', enum: ['basic', 'advanced'], description: 'basic is faster and cheaper; advanced returns deeper analysis (default basic).' },
-      topic: { type: 'string', enum: ['general', 'news'], description: 'Search scope: general web or news (default general).' },
-      days: { type: 'number', description: 'News freshness window in days, e.g. 7 for the last week; only applies when topic is news.' },
-      include_answer: { type: 'boolean', description: 'Ask Tavily to generate a concise answer to the query (default false).' },
-      include_raw_content: { type: 'boolean', description: 'Include raw page content for each result (default false; capped per result).' },
-      include_domains: { type: 'array', items: { type: 'string' }, description: 'Only search within these domains.' },
-      exclude_domains: { type: 'array', items: { type: 'string' }, description: 'Exclude these domains from results.' },
-    },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          answer: { type: 'string' },
-          results: {
-            type: 'array',
-            required: true,
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                url: { type: 'string', required: true },
-                title: { type: 'string' },
-                content: { type: 'string' },
-                score: { type: 'number' },
-                publishedAt: { type: 'string' },
-                rawContent: { type: 'string' },
-              },
-            },
-          },
-        },
-      },
-      render: (_args, value) => [{ type: 'text', text: formatOutput(value) }],
-    },
-    timeoutMs: 30000,
+    name: 'tavily_map',
+    description: 'Discover URLs in a website through Tavily without extracting their page content. Use it to inspect site structure before selecting pages to extract or crawl.',
+    parameters: navigationParameters,
+    output: { schema: MAP_OUTPUT_SCHEMA, render: renderJson },
+    timeoutMs: 60000,
     isConcurrencySafe: () => true,
-    execute,
+    async execute(args, exec) {
+      const response = await client.request('map', navigationRequest(args, { crawl: false }), exec.signal)
+      const urls = Array.isArray(response?.results)
+        ? response.results.flatMap((result) => typeof result === 'string' ? [result] : (typeof result?.url === 'string' ? [result.url] : []))
+        : []
+      return {
+        ...(typeof response?.base_url === 'string' ? { baseUrl: response.base_url } : {}),
+        urls,
+        ...(responseTime(response) === undefined ? {} : { responseTime: responseTime(response) }),
+      }
+    },
   }))
 
-  const systemPrompt = ctx.get('systemPrompt')
-  if (systemPrompt !== undefined) {
-    systemPrompt.section({
-      name: 'tool:tavily_search',
-      order: 111,
-      text: 'Use the tavily_search tool for web search powered by the Tavily API. It supports result count, search depth, news topic with a freshness window, domain allow/deny filters, and an optional generated answer (include_answer). Cite the returned URLs as markdown links in your answer.',
-    })
-  }
-
-  const credentials = ctx.get('credentials')
-  if (credentials !== undefined) {
-    credentials.describe('TAVILY_API_KEYS').then((info) => {
-      if (!info.configured) {
-        ctx.logger.warn('tavily_search: TAVILY_API_KEYS credential is not configured; add it via the Tavily Search settings card or ~/.dsh/.credentials.yaml')
+  ctx.tools.register(defineTool({
+    name: 'tavily_crawl',
+    description: 'Crawl a website through Tavily and return the complete extracted content of discovered pages.',
+    parameters: {
+      ...navigationParameters,
+      extract_depth: { type: 'string', enum: ['basic', 'advanced'], description: 'Extraction depth for each crawled page.' },
+      format: { type: 'string', enum: ['markdown', 'text'], description: 'Content format for each crawled page.' },
+      include_favicon: { type: 'boolean', description: 'Include favicon URLs when Tavily provides them.' },
+      chunks_per_source: { type: 'number', description: 'Maximum extracted chunks returned per crawled source.' },
+    },
+    output: { schema: CRAWL_OUTPUT_SCHEMA, render: renderJson },
+    timeoutMs: 120000,
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const response = await client.request('crawl', navigationRequest(args, { crawl: true }), exec.signal)
+      return {
+        ...(typeof response?.base_url === 'string' ? { baseUrl: response.base_url } : {}),
+        results: projectPages(response),
+        ...(responseTime(response) === undefined ? {} : { responseTime: responseTime(response) }),
       }
-    }).catch((error) => {
-      ctx.logger.warn('tavily_search: credential describe failed: %s', error instanceof Error ? error.message : String(error))
-    })
-  }
+    },
+  }))
+
+  applyBackend(ctx)
 }
 const MANAGER_STATE = 'tavily-manager.json'
-const TOGGLE_STATE = 'tavily-toggle.json'
 const LEGACY_STATE = 'tavily-settings.json'
 const REFS = ['TAVILY_API_KEYS', 'TAVILY_API_KEY']
 
@@ -382,7 +377,6 @@ async function collectStoredKeys(credentials) {
 
 function applyBackend(ctx) {
   const credentials = ctx.get('credentials')
-  const loader = ctx.get('loader')
 
   const send = (res, status, payload) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' })
@@ -431,25 +425,6 @@ function applyBackend(ctx) {
       })),
       strategy: isValidStrategy(state.strategy) ? state.strategy : 'rotate',
     }
-  }
-
-  // ── persisted on/off + live provider flip ───────────────────────────────────
-  async function applyProvider(enabled) {
-    if (loader === undefined) return
-    try {
-      const entry = loader.resolve('include:web')
-      if (entry !== undefined && entry !== null && entry.fiber !== undefined) {
-        await entry.fiber.update({ searchProvider: enabled ? 'tavily' : 'deepseek-official' }, true)
-      }
-    } catch (error) {
-      ctx.logger.warn('tavily-backend: web provider flip failed: %s', error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  // Re-apply the persisted choice at activation (default: enabled).
-  const toggleState = readState(TOGGLE_STATE)
-  if (toggleState.enabled === false) {
-    void applyProvider(false)
   }
 
   ctx.webServer.register({
@@ -568,25 +543,4 @@ function applyBackend(ctx) {
     },
   })
 
-  ctx.webServer.register({
-    kind: 'exact',
-    path: '/api/tavily-toggle',
-    handler: async (req, res) => {
-      try {
-        if (req.method === 'GET') {
-          return send(res, 200, { ok: true, enabled: readState(TOGGLE_STATE).enabled === true })
-        }
-        if (req.method === 'POST') {
-          const body = await readBody(req)
-          const enabled = body !== null && typeof body === 'object' && body.enabled === true
-          writeState(TOGGLE_STATE, { enabled })
-          await applyProvider(enabled)
-          return send(res, 200, { ok: true, enabled })
-        }
-        return send(res, 405, { ok: false, error: 'method not allowed' })
-      } catch (error) {
-        send(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
-      }
-    },
-  })
 }

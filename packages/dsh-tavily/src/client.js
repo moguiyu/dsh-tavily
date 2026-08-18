@@ -57,18 +57,6 @@ export function factory(require) {
     }, react.createElement(SvgIcon, { name: icon, size: 13 }))
   }
 
-  function Switch({ checked, disabled, label, onChange }) {
-    return react.createElement('button', {
-      type: 'button',
-      role: 'switch',
-      'aria-checked': checked === true,
-      'aria-label': label,
-      disabled: disabled || checked === null,
-      onClick: onChange,
-      style: { width: 36, height: 20, borderRadius: 10, border: '1px solid var(--dsw-alias-border-l2)', background: checked === true ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-bg-layer-1)', cursor: 'pointer', padding: 0, position: 'relative', flex: 'none', opacity: disabled ? 0.5 : 1 }
-    }, react.createElement('span', { style: { position: 'absolute', top: 2, left: checked === true ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: '#fff', transition: 'left .12s ease' } }))
-  }
-
   function UsageCircle({ percent, size, label, onClick }) {
     const radius = 15
     const circumference = 2 * Math.PI * radius
@@ -84,7 +72,6 @@ export function factory(require) {
   }
 
   function TavilyCard() {
-    const [enabled, setEnabled] = react.useState(null)
     const [expanded, setExpanded] = react.useState(false)
     const [server, setServer] = react.useState(null)
     const [loadError, setLoadError] = react.useState(null)
@@ -101,13 +88,6 @@ export function factory(require) {
     const [usageError, setUsageError] = react.useState(null)
 
     const refresh = react.useCallback(async () => {
-      try {
-        const response = await fetch('/api/tavily-toggle', { cache: 'no-store' })
-        const data = await response.json()
-        if (data.ok) { setEnabled(data.enabled); setLoadError(null) } else { setLoadError(data.error || 'Failed to load settings') }
-      } catch (error) {
-        setLoadError(String(error && error.message ? error.message : error))
-      }
       try {
         const response = await fetch('/api/tavily-manager', { cache: 'no-store' })
         const data = await response.json()
@@ -126,27 +106,6 @@ export function factory(require) {
     }, [])
 
     react.useEffect(() => { refresh() }, [refresh])
-
-    const toggleEnabled = async () => {
-      const next = enabled !== true
-      setBusy(true)
-      setNotice(null)
-      try {
-        const response = await fetch('/api/tavily-toggle', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabled: next })
-        })
-        const data = await response.json()
-        if (!data.ok) { setNotice({ error: data.error || 'Switch failed' }); return }
-        setEnabled(data.enabled)
-        setNotice({ ok: data.enabled ? 'Tavily search enabled — web_search uses Tavily.' : 'Tavily search off — web_search uses the native provider (DeepSeek). No Tavily key is needed.' })
-      } catch (error) {
-        setNotice({ error: String(error && error.message ? error.message : error) })
-      } finally {
-        setBusy(false)
-      }
-    }
 
     const saveStrategy = async (next) => {
       setBusy(true)
@@ -288,8 +247,6 @@ export function factory(require) {
     const headStyle = { textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--dsw-alias-border-l2)', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }
     const cellStyle = { padding: '8px', verticalAlign: 'top' }
 
-    const isOff = enabled === false
-
     return react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, minWidth: 0, overflow: 'hidden' } },
       react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
       react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 52, boxSizing: 'border-box' } },
@@ -300,10 +257,9 @@ export function factory(require) {
           style: { flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2, font: 'inherit', color: 'inherit' }
         },
           react.createElement('strong', { style: { fontSize: 14, fontWeight: 600, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Tavily Search'),
-          react.createElement('span', { style: { fontSize: 12, lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Tavily-backed web_search · key rotation · usage')
+          react.createElement('span', { style: { fontSize: 12, lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Tavily-backed web_search · extract · map · crawl')
         ),
         react.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none' } },
-          react.createElement(Switch, { checked: enabled, disabled: busy, label: 'Tavily search enabled', onChange: toggleEnabled }),
           react.createElement('button', {
             type: 'button',
             className: 'dts-icon-btn',
@@ -319,13 +275,8 @@ export function factory(require) {
         )
       ),
       expanded && react.createElement('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 16 } },
-        isOff
-          ? react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
-              'Tavily search is off — web_search uses the native provider (DeepSeek). No Tavily key is needed.'
-            )
-          : react.createElement(react.Fragment, null,
               react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
-                'All keys are listed below; the key marked with the green dot is the primary key used by web_search. The tavily_search tool uses all keys according to the strategy. Changes take effect on the next search.'
+                'All keys are listed below. Requests from web_search, tavily_extract, tavily_map, and tavily_crawl use the selected strategy. Changes take effect on the next request.'
               ),
               loadError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(loadError)),
               react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
@@ -362,7 +313,7 @@ export function factory(require) {
                           : react.createElement('span', null,
                               isRevealed ? revealed[masked] : masked,
                               key.primary === true && !isRemoved && react.createElement('span', {
-                                title: 'Primary — used by web_search',
+                                title: 'First key in the current strategy',
                                 style: { display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: 'var(--dsw-alias-state-success-primary)', marginLeft: 8, verticalAlign: 'middle', flex: 'none' }
                               })
                             )
@@ -434,7 +385,6 @@ export function factory(require) {
               ),
               usageError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usageError)),
               usage !== null && usage.ok === false && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usage.error))
-            )
       )
     )
   }
