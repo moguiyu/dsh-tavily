@@ -2,7 +2,7 @@
   "name": "dsh-tavily-workspace",
   "version": "0.1.10",
   "private": true,
-  "description": "Tavily Search for DSH: multiple API keys, rotation/failover, usage gauge, settings card.",
+  "description": "Tavily web_search provider for DSH with extract, map, crawl, key rotation, usage gauge, and settings.",
   "type": "module",
   "workspaces": [
     "packages/*"

@@ -1,35 +1,56 @@
-import { test } from 'node:test'
+import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { clampInt, normalizeArgs } from '../src/index.js'
 import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from '../src/lib.js'
+import { TavilyApiClient, TavilyApiError } from '../src/tavily.js'
 
-test('clampInt', () => {
-  assert.equal(clampInt(3, 1, 20, 5), 3)
-  assert.equal(clampInt(0, 1, 20, 5), 1)
-  assert.equal(clampInt(99, 1, 20, 5), 20)
-  assert.equal(clampInt(undefined, 1, 20, 5), 5)
-  assert.equal(clampInt('abc', 1, 20, 5), 5)
-  assert.equal(clampInt(2.6, 1, 20, 5), 3)
+let fetchRestore
+
+beforeEach(() => {
+  fetchRestore = globalThis.fetch
 })
 
-test('normalizeArgs: query is required and trimmed', () => {
-  assert.throws(() => normalizeArgs({}), /non-empty string/)
-  assert.throws(() => normalizeArgs({ query: '   ' }), /non-empty string/)
-  assert.equal(normalizeArgs({ query: '  hello  ' }).query, 'hello')
+afterEach(() => {
+  globalThis.fetch = fetchRestore
 })
 
-test('normalizeArgs: defaults and clamping', () => {
-  const args = normalizeArgs({ query: 'x' })
-  assert.equal(args.maxResults, 5)
-  assert.equal(args.searchDepth, 'basic')
-  assert.equal(args.topic, 'general')
-  assert.equal(args.days, undefined)
-  assert.equal(args.includeAnswer, false)
-  assert.deepEqual(args.includeDomains, [])
-  assert.deepEqual(args.excludeDomains, [])
+test('TavilyApiClient posts JSON with the selected API key', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init })
+    return new Response(JSON.stringify({ results: [] }), { status: 200 })
+  }
+  const client = new TavilyApiClient({ resolveKeys: async () => ['first-key'] })
+  await client.request('extract', { urls: ['https://example.com'] })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://api.tavily.com/extract')
+  assert.equal(calls[0].init.headers.authorization, 'Bearer first-key')
+  assert.deepEqual(JSON.parse(calls[0].init.body), { urls: ['https://example.com'] })
+})
+
+test('TavilyApiClient retries a rate-limited key with the next key', async () => {
+  const headers = []
+  globalThis.fetch = async (_url, init) => {
+    headers.push(init.headers.authorization)
+    return headers.length === 1
+      ? new Response(JSON.stringify({ detail: { error: 'rate limited' } }), { status: 429 })
+      : new Response(JSON.stringify({ results: ['https://example.com/docs'] }), { status: 200 })
+  }
+  const client = new TavilyApiClient({ resolveKeys: async () => ['first-key', 'second-key'] })
+  const response = await client.request('map', { url: 'https://example.com' })
+  assert.deepEqual(headers, ['Bearer first-key', 'Bearer second-key'])
+  assert.deepEqual(response, { results: ['https://example.com/docs'] })
+})
+
+test('TavilyApiClient reports missing credentials before fetching', async () => {
+  globalThis.fetch = async () => { throw new Error('must not fetch') }
+  const client = new TavilyApiClient({ resolveKeys: async () => [] })
+  await assert.rejects(
+    () => client.request('crawl', { url: 'https://example.com' }),
+    (error) => error instanceof TavilyApiError && error.code === 'missing_credential',
+  )
 })
 
 test('STRATEGIES and isValidStrategy', () => {

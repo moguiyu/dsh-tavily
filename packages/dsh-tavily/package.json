@@ -1,7 +1,7 @@
 {
   "name": "@moguiyu/dsh-tavily",
   "version": "0.1.10",
-  "description": "Tavily Search for DSH: multiple API keys, rotation/failover, usage gauge, settings card, and web_search toggle in one plugin.",
+  "description": "Tavily web_search provider for DSH with extract, map, crawl, key rotation, usage gauge, and settings.",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
@@ -53,6 +53,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-web": "^0.1.0-rc.6"
   }
 }
