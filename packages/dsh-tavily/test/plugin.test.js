@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as plugin from '../src/index.js'
-import { TAVILY_PROVIDER_ID } from '../src/provider.js'
+import { TAVILY_PROVIDER_ID, TavilySearchProvider, mapTavilySearchResponse } from '../src/provider.js'
+import { TavilyApiClient } from '../src/tavily.js'
 
 let fetchRestore
 
@@ -60,6 +61,45 @@ test('provider maps Tavily search results for the native web_search tool', async
     sources: [{ url: 'https://example.com', title: 'Example', snippet: 'source snippet', publishedAt: '2026-08-17' }],
     truncated: false,
   })
+})
+
+test('provider preserves URL-only Tavily sources', () => {
+  assert.deepEqual(mapTavilySearchResponse({
+    results: [
+      { url: 'https://example.com/only-url' },
+      { url: 'https://example.com/title', title: 'Title', content: '   ' },
+      { url: '', title: 'Invalid' },
+    ],
+  }), {
+    sources: [
+      { url: 'https://example.com/only-url' },
+      { url: 'https://example.com/title', title: 'Title' },
+    ],
+    truncated: false,
+  })
+})
+
+test('provider distinguishes credential failures from missing credentials', async () => {
+  const cause = new Error('credentials service unavailable')
+  const provider = new TavilySearchProvider(new TavilyApiClient({ resolveKeys: async () => { throw cause } }))
+  await assert.rejects(
+    () => provider.search({ query: 'DSH' }),
+    (error) => error.code === 'WEB_PROVIDER_ERROR' && error.cause?.code === 'credential_error' && error.cause.cause === cause,
+  )
+})
+
+test('provider reports custom abort reasons as WEB_ABORTED', async () => {
+  const controller = new AbortController()
+  const reason = new Error('tool timeout')
+  globalThis.fetch = async () => {
+    controller.abort(reason)
+    throw reason
+  }
+  const provider = new TavilySearchProvider(new TavilyApiClient({ resolveKeys: async () => ['test-key'] }))
+  await assert.rejects(
+    () => provider.search({ query: 'DSH' }, controller.signal),
+    (error) => error.code === 'WEB_ABORTED' && error.cause?.code === 'aborted' && error.cause.cause === reason,
+  )
 })
 
 test('extra tools call their corresponding Tavily endpoints', async () => {

@@ -53,6 +53,56 @@ test('TavilyApiClient reports missing credentials before fetching', async () => 
   )
 })
 
+test('TavilyApiClient preserves credential resolution failures', async () => {
+  const cause = new Error('credentials service unavailable')
+  const client = new TavilyApiClient({ resolveKeys: async () => { throw cause } })
+  await assert.rejects(
+    () => client.request('search', { query: 'DSH' }),
+    (error) => error instanceof TavilyApiError && error.code === 'credential_error' && error.cause === cause,
+  )
+})
+
+test('TavilyApiClient classifies a custom abort reason as aborted', async () => {
+  const controller = new AbortController()
+  const reason = new Error('tool timeout')
+  globalThis.fetch = async () => {
+    controller.abort(reason)
+    throw reason
+  }
+  const client = new TavilyApiClient({ resolveKeys: async () => ['test-key'] })
+  await assert.rejects(
+    () => client.request('search', { query: 'DSH' }, controller.signal),
+    (error) => error instanceof TavilyApiError && error.code === 'aborted' && error.cause === reason,
+  )
+})
+
+test('TavilyApiClient detects cancellation while decoding a response', async () => {
+  const controller = new AbortController()
+  const reason = new Error('tool timeout')
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      controller.abort(reason)
+      return { results: [] }
+    },
+  })
+  const client = new TavilyApiClient({ resolveKeys: async () => ['test-key'] })
+  await assert.rejects(
+    () => client.request('search', { query: 'DSH' }, controller.signal),
+    (error) => error instanceof TavilyApiError && error.code === 'aborted' && error.cause === reason,
+  )
+})
+
+test('TavilyApiClient keeps non-abort network failures distinct', async () => {
+  globalThis.fetch = async () => { throw new Error('network unavailable') }
+  const client = new TavilyApiClient({ resolveKeys: async () => ['test-key'] })
+  await assert.rejects(
+    () => client.request('search', { query: 'DSH' }),
+    (error) => error instanceof TavilyApiError && error.code === 'request_failed',
+  )
+})
+
 test('STRATEGIES and isValidStrategy', () => {
   assert.deepEqual(STRATEGIES, ['rotate', 'low-usage-first', 'high-usage-first'])
   assert.equal(isValidStrategy('rotate'), true)

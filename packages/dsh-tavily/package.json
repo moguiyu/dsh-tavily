@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "Tavily web_search provider for DSH with extract, map, crawl, key rotation, usage gauge, and settings.",
   "type": "module",
   "main": "./src/index.js",

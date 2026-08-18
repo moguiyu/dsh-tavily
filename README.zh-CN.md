@@ -44,6 +44,12 @@ dsh plugin --profile web add @moguiyu/dsh-tavily
 
 刷新浏览器后，卡片会出现在 **Settings → Plugins → plugin configuration**（`tavily-search`）。
 
+## 从 0.1.x 迁移
+
+0.2.0 将直接提供的 `tavily_search` 模型工具替换为 DSH 原生 `web_search` provider，并新增 `tavily_extract`、`tavily_map` 和 `tavily_crawl`。
+
+安装 `@moguiyu/dsh-tavily` 前，请从 DSH profile 中移除 `@moguiyu/dsh-tool-tavily-search` 与 `@moguiyu/dsh-tavily-backend`。不要与旧包同时安装：它们会注册相同的设置卡片和后端路由。已有的 `TAVILY_API_KEYS` 凭据和 `tavily-manager.json` 状态会被复用。
+
 ## 凭据
 
 - `TAVILY_API_KEYS` — `web_search`、`tavily_extract`、`tavily_map`、`tavily_crawl` 使用的逗号分隔 Key 列表

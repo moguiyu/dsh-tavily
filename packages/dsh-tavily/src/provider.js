@@ -10,11 +10,10 @@ export function mapTavilySearchResponse(response) {
     ? response.results.flatMap((result) => {
       if (result === null || typeof result !== 'object' || typeof result.url !== 'string' || result.url.length === 0) return []
       const snippet = typeof result.content === 'string' ? result.content.trim() : ''
-      if (snippet.length === 0) return []
       return [{
         url: result.url,
         ...(typeof result.title === 'string' && result.title.length > 0 ? { title: result.title } : {}),
-        snippet,
+        ...(snippet.length > 0 ? { snippet } : {}),
         ...(typeof result.published_date === 'string' && result.published_date.length > 0 ? { publishedAt: result.published_date } : {}),
       }]
     })
@@ -30,7 +29,7 @@ export function mapTavilySearchResponse(response) {
 function asWebError(error) {
   if (error instanceof TavilyApiError) {
     if (error.code === 'aborted') return new WebError(error.message, 'WEB_ABORTED', { cause: error })
-    if (error.code === 'missing_credential' || error.code === 'credential_error') {
+    if (error.code === 'missing_credential') {
       return new WebError(error.message, 'WEB_MISSING_CREDENTIAL', { cause: error })
     }
   }

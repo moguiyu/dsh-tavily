@@ -12,6 +12,10 @@ provider id. Its bundle config selects that provider for DSH's native `web_searc
 Every Tavily operation resolves `TAVILY_API_KEYS` on request, rotates through the configured keys,
 and retries the next key after HTTP 401 or 429. `TAVILY_API_KEY` remains a legacy fallback.
 
+## Migration from 0.1.x
+
+0.2.0 replaces the direct `tavily_search` model tool with DSH's native `web_search` provider. Remove `@moguiyu/dsh-tool-tavily-search` and `@moguiyu/dsh-tavily-backend` before installing this package; the three packages must not be installed together because they duplicate the settings card and backend routes. Existing `TAVILY_API_KEYS` credentials and `tavily-manager.json` state are reused.
+
 Host half: plain ESM (`src/index.js`). Client half: prebuilt `window.__ModuleLoader__` bundle
 at `lib/client.js`, generated from `src/client.js` via `pnpm build`.
 

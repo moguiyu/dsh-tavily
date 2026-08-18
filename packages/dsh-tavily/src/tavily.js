@@ -29,8 +29,16 @@ function errorMessage(payload, status) {
   return 'Tavily API error (HTTP ' + status + ')'
 }
 
-function isAbortError(error) {
-  return error instanceof Error && error.name === 'AbortError'
+function isAborted(error, signal) {
+  return signal?.aborted === true || (error instanceof Error && error.name === 'AbortError')
+}
+
+function abortedError(cause) {
+  return new TavilyApiError('Tavily request was aborted', 'aborted', cause)
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted === true) throw abortedError(signal.reason)
 }
 
 /**
@@ -49,12 +57,15 @@ export class TavilyApiClient {
   }
 
   async request(operation, body, signal) {
+    throwIfAborted(signal)
     let keys
     try {
       keys = await this.resolveKeys()
     } catch (error) {
+      if (isAborted(error, signal)) throw abortedError(error)
       throw new TavilyApiError('Tavily credentials could not be resolved', 'credential_error', error)
     }
+    throwIfAborted(signal)
     if (!Array.isArray(keys) || keys.length === 0) {
       throw new TavilyApiError('Tavily API key is not configured', 'missing_credential')
     }
@@ -62,6 +73,7 @@ export class TavilyApiClient {
     let lastStatus = 0
     const start = this.rotation
     for (let attempt = 0; attempt < keys.length; attempt++) {
+      throwIfAborted(signal)
       const index = (start + attempt) % keys.length
       const key = keys[index]
       let response
@@ -73,15 +85,17 @@ export class TavilyApiClient {
             'content-type': 'application/json',
             accept: 'application/json',
             authorization: 'Bearer ' + key,
-            'user-agent': 'dsh-tavily/0.1.10',
+            'user-agent': 'dsh-tavily/0.2.0',
           },
           body: JSON.stringify(body),
           ...(signal === undefined ? {} : { signal }),
         })
       } catch (error) {
-        if (isAbortError(error)) throw new TavilyApiError('Tavily request was aborted', 'aborted', error)
+        if (isAborted(error, signal)) throw abortedError(error)
         throw new TavilyApiError('Tavily request failed: ' + String(error), 'request_failed', error)
       }
+
+      throwIfAborted(signal)
 
       if (response.status === 401 || response.status === 429) {
         lastStatus = response.status
@@ -93,17 +107,20 @@ export class TavilyApiClient {
         try {
           payload = await response.json()
         } catch (error) {
-          if (isAbortError(error)) throw new TavilyApiError('Tavily request was aborted', 'aborted', error)
+          if (isAborted(error, signal)) throw abortedError(error)
         }
+        throwIfAborted(signal)
         throw new TavilyApiError(errorMessage(payload, response.status), 'provider_error')
       }
 
       try {
         const payload = await response.json()
+        throwIfAborted(signal)
         this.rotation = (index + 1) % keys.length
         return payload
       } catch (error) {
-        if (isAbortError(error)) throw new TavilyApiError('Tavily request was aborted', 'aborted', error)
+        if (error instanceof TavilyApiError && error.code === 'aborted') throw error
+        if (isAborted(error, signal)) throw abortedError(error)
         throw new TavilyApiError('Tavily returned an unprocessable response body: ' + String(error), 'provider_error', error)
       }
     }
