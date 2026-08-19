@@ -247,7 +247,7 @@ export function factory(require) {
     const headStyle = { textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--dsw-alias-border-l2)', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }
     const cellStyle = { padding: '8px', verticalAlign: 'top' }
 
-    return react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, minWidth: 0, overflow: 'hidden' } },
+    return react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-3)', borderRadius: 10, minWidth: 0, overflow: 'hidden' } },
       react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
       react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 52, boxSizing: 'border-box' } },
         react.createElement('button', {

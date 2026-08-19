@@ -46,9 +46,7 @@ After refreshing the browser, the card appears under **Settings → Plugins → 
 
 ## Migration from 0.1.x
 
-Version 0.2.0 replaces the direct `tavily_search` model tool with DSH's native `web_search` provider and adds `tavily_extract`, `tavily_map`, and `tavily_crawl`.
-
-Remove `@moguiyu/dsh-tool-tavily-search` and `@moguiyu/dsh-tavily-backend` from the DSH profile before installing `@moguiyu/dsh-tavily`. Do not install the legacy packages alongside this package: they register the same settings card and backend routes. Existing `TAVILY_API_KEYS` credentials and `tavily-manager.json` state are reused.
+Version 0.2.0 replaces the direct `tavily_search` model tool with DSH's native `web_search` provider and adds `tavily_extract`, `tavily_map`, and `tavily_crawl`. Existing `TAVILY_API_KEYS` credentials and `tavily-manager.json` state are reused.
 
 ## Credentials
 
