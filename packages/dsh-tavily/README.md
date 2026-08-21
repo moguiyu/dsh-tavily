@@ -7,10 +7,11 @@ settings card, and the local HTTP backend for key/usage management.
   `include_answer`, `include_raw_content`, `include_domains`, `exclude_domains`). Opt-in and
   off by default.
 - **Settings card** — key list, usage gauge, strategy selector, and the advanced-tool switch.
-- **rc.7 plugin management** — the Host registers the `tavily-search` settings namespace and
-  the card is keyed by it (keyed `settings.plugin.item`), so the Plugins configuration tab
-  serves the card exactly when this plugin is composed. The switch writes the namespace and
-  restarts the row; the choice is mirrored to `~/.dsh/tavily-tool.json`.
+- **Plugin-config settings card** — the Host registers the `tavily-search` settings namespace
+  and the card is keyed by it (keyed `settings.plugin.item`), so the Plugins configuration tab
+  serves the card exactly when this plugin is composed (needs DSH **0.1.0-rc.7 or newer**).
+  The switch writes the namespace and restarts the row; the choice is mirrored to
+  `~/.dsh/tavily-tool.json`.
 - **`web_search` is never replaced** — no `ctx.web` provider is registered and
   `web.searchProvider` is never rewritten; the built-in DeepSeek `web_search` keeps its
   native provider and schema. Tavily is an extra, opt-in search option.

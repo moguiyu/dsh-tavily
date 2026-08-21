@@ -1,17 +1,36 @@
 # dsh-tavily
 
-Tavily web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) as an **opt-in extra search tool**, with **multiple API keys**, **rotation/failover**, **live usage gauge**, and a settings card wired into the rc.7 plugin management.
+English | [简体中文](README.zh-CN.md)
 
-The built-in `web_search` tool is **never replaced**: Tavily is an *option* on top of the native search, not a swap-in for it. This repo registers no web-search provider and never rewrites `web.searchProvider`.
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/moguiyu/dsh-tavily/)
+
+Tavily web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) as an **opt-in extra search tool** — with **multiple API keys**, **rotation/failover**, **live usage gauge**, and a settings card in the Plugins configuration tab.
+
+The built-in `web_search` tool is **never replaced**: Tavily is an *option* on top of the native search, not a swap-in for it. This plugin registers no web-search provider and never rewrites `web.searchProvider`.
+
+<p align="center">
+  <img src="assets/tavily-search.png" alt="Tavily Search settings card: masked key list with the green primary dot, per-key usage circles, the key-usage strategy selector, and the advanced-tool switch — as served under Settings → Plugins → plugin configuration" width="560" />
+</p>
 
 ## Highlights
 
-- 🧩 **rc.7 plugin management** — the Host registers the `tavily-search` settings namespace; the card is keyed by it, so **Settings → Plugins → plugin configuration** pairs and serves it as soon as the deployment composes the plugin.
+- 🧩 **Plugin-config settings card** — a native card under **Settings → Plugins → plugin configuration**: add, remove and reveal keys, pick the key-usage strategy, and opt into the advanced `tavily_search` tool.
 - 🔑 **Multiple Tavily API keys** — manage a flat key list from the DSH settings UI.
 - 🔁 **Key rotation & failover** — round-robin across keys; automatically retries on HTTP 401/429.
-- 📊 **Usage gauge** — per-key Tavily usage and totals, fetched server-side without exposing keys.
-- 🎛️ **Settings card** — add/remove/reveal keys, choose usage strategy, and opt into the advanced `tavily_search` model tool.
+- 📊 **Live usage gauge** — per-key Tavily usage and totals, fetched server-side without exposing keys.
 - 🚫 **`web_search` untouched** — no `ctx.web` provider is registered; the card switch only enables/disables the extra `tavily_search` tool.
+
+## Install
+
+One command installs the workspace bundle, which composes the combined `dsh-tavily` row:
+
+```sh
+dsh plugin --profile web add github:moguiyu/dsh-tavily
+```
+
+After refreshing the browser, the **Tavily Search** card appears under **Settings → Plugins → plugin configuration**. It only appears when the Host half is actually composed — the configuration tab dispatches the card keyed by the namespace the Host serves.
+
+> **Requirements** — DSH is a development preview (`0.1.0-rc.x`); the keyed plugin-config card needs **0.1.0-rc.7 or newer**. The npm name is the scoped `@moguiyu/dsh-tavily`, not the similarly-named community `dsh-tavily` provider-swap plugin.
 
 ## Packages
 
@@ -20,16 +39,6 @@ The built-in `web_search` tool is **never replaced**: Tavily is an *option* on t
 | [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | Recommended plugin: `tavily_search` tool + settings card + local backend + `tavily-search` namespace |
 | [`@moguiyu/dsh-tavily-backend`](packages/dsh-tavily-backend) | Standalone settings backend (key manager, usage, tool switch) |
 | [`@moguiyu/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | Standalone advanced `tavily_search` tool (no UI) |
-
-## Install
-
-One command installs the workspace bundle, which inserts the combined `dsh-tavily` row:
-
-```sh
-dsh plugin --profile web add github:moguiyu/dsh-tavily
-```
-
-After refreshing the browser, the **Tavily Search** card appears under **Settings → Plugins → plugin configuration** (`tavily-search`). It only appears when the Host half is actually composed — the rc.7 configuration tab dispatches the card keyed by the namespace the Host serves.
 
 ## Credentials
 
@@ -47,8 +56,7 @@ Both are managed automatically by the settings card. Keys never leave the server
 
 The advanced model-facing tool is **opt-in and off by default**. It exists for direct Tavily-only parameters (`search_depth`, `topic`, `days`, domain filters, `include_answer`, `include_raw_content`) and is independent of `web_search`:
 
-- enabling it never changes the default `web_search` (the built-in DeepSeek provider stays,
-  along with its native schema);
+- enabling it never changes the default `web_search` (the built-in DeepSeek provider stays, along with its native schema);
 - disabling it only unregisters the extra `tavily_search` tool.
 
 The switch lives in the `tavily-search` settings namespace (settings.yaml) and is mirrored to `~/.dsh/tavily-tool.json` so every restart reads the same value.
@@ -61,10 +69,6 @@ The switch lives in the `tavily-search` settings namespace (settings.yaml) and i
 
 Mode `600`, no secrets stored.
 
-## Screenshot
-
-![Tavily Search for DSH](assets/tavily-search.png)
-
 ## Development
 
 ```sh
@@ -76,7 +80,3 @@ pnpm build
 ## License
 
 MIT
-
----
-
-[简体中文](README.zh-CN.md)

@@ -1,17 +1,36 @@
 # dsh-tavily
 
-为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）提供基于 Tavily 的**可选高级搜索工具**，支持**多个 API Key**、**轮换/故障转移**、**实时用量仪表盘**，以及接入 rc.7 插件管理（插件管理）的设置卡片。
+[English](README.md) | 简体中文
 
-内置的 `web_search` 工具**永远不会被替换**：Tavily 是默认搜索之外的*选项*，而不是替代品。本仓库不注册任何 web 搜索提供方，也绝不改写 `web.searchProvider`。
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/moguiyu/dsh-tavily/)
+
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）提供基于 Tavily 的**可选高级搜索工具**——支持**多个 API Key**、**轮换/故障转移**、**实时用量仪表盘**，以及一个接入插件配置页的设置卡片。
+
+内置的 `web_search` 工具**永远不会被替换**：Tavily 是默认搜索之外的*选项*，而不是替代品。本插件不注册任何 web 搜索提供方，也绝不改写 `web.searchProvider`。
+
+<p align="center">
+  <img src="assets/tavily-search.png" alt="Tavily Search 设置卡片：带绿色主 Key 圆点的遮罩 Key 列表、各 Key 用量圆环、策略选择器以及高级工具开关——位于 Settings → Plugins → plugin configuration" width="560" />
+</p>
 
 ## 亮点
 
-- 🧩 **rc.7 插件管理** — Host 注册 `tavily-search` 设置命名空间，卡片以该命名空间为键，部署一经组合本插件，**Settings（设置）→ Plugins（插件）→ plugin configuration（插件配置）** 即自动配对并展示该卡片。
+- 🧩 **插件配置设置卡片** — 位于 **Settings → Plugins → plugin configuration** 的原生卡片：添加、删除、查看 Key，选择 Key 用量策略，并单独开关高级 `tavily_search` 工具。
 - 🔑 **多 Tavily API Key** — 在 DSH 设置界面中管理扁平化 Key 列表。
 - 🔁 **Key 轮换与故障转移** — 轮询多 Key；遇到 HTTP 401/429 自动切换下一个 Key。
-- 📊 **用量仪表盘** — 服务端获取每个 Key 的 Tavily 用量与汇总，不暴露 Key。
-- 🎛️ **设置卡片** — 添加/删除/查看 Key、选择用量策略，并单独开关高级 `tavily_search` 工具。
+- 📊 **实时用量仪表盘** — 服务端获取每个 Key 的 Tavily 用量与汇总，不暴露 Key。
 - 🚫 **`web_search` 不受影响** — 不注册 `ctx.web` 提供方；卡片开关只控制额外的 `tavily_search` 工具。
+
+## 安装
+
+一条命令安装工作区 bundle，会自动组合出 `dsh-tavily` 行：
+
+```sh
+dsh plugin --profile web add github:moguiyu/dsh-tavily
+```
+
+刷新浏览器后，**Tavily Search** 卡片会出现在 **Settings → Plugins → plugin configuration**。只有当 Host 半身确实被组合时卡片才会出现——配置页只按 Host 已提供（served）的命名空间派发对应键的卡片。
+
+> **要求** — DSH 为开发者预览版（`0.1.0-rc.x`）；keyed 插件配置卡片需要 **0.1.0-rc.7 或更新**。npm 名为作用域包 `@moguiyu/dsh-tavily`，并非同名社区 `dsh-tavily` 提供方替换插件。
 
 ## 包
 
@@ -20,16 +39,6 @@
 | [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 推荐插件：`tavily_search` 工具 + 设置卡片 + 本地后端 + `tavily-search` 命名空间 |
 | [`@moguiyu/dsh-tavily-backend`](packages/dsh-tavily-backend) | 独立设置后端（Key 管理、用量、工具开关） |
 | [`@moguiyu/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | 独立高级 `tavily_search` 工具（无界面） |
-
-## 安装
-
-一条命令安装工作区 bundle，会自动插入组合版 `dsh-tavily` 行：
-
-```sh
-dsh plugin --profile web add github:moguiyu/dsh-tavily
-```
-
-刷新浏览器后，**Tavily Search** 卡片会出现在 **Settings → Plugins → plugin configuration**（`tavily-search`）。只有当 Host 半身确实被组合时卡片才会出现——rc.7 配置页只按 Host 已提供（served）的命名空间派发对应键的卡片。
 
 ## 凭据
 
@@ -60,10 +69,6 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 
 权限 `600`，不保存密钥。
 
-## 截图
-
-![Tavily Search for DSH](assets/tavily-search.png)
-
 ## 开发
 
 ```sh
@@ -75,7 +80,3 @@ pnpm build
 ## 许可证
 
 MIT
-
----
-
-[English](README.md)
