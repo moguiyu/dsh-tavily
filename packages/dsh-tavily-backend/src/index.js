@@ -12,7 +12,7 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { STRATEGIES, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
+import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
 
 export const name = 'tavily-backend'
 
