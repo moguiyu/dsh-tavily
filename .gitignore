@@ -4,6 +4,9 @@ dist/
 .DS_Store
 AGENTS.md
 
+# Local-only workbench notes; never published
+docs/
+
 # Local pnpm artifacts (CI and release use npm; the pnpm lock is not shipped)
 pnpm-lock.yaml
 .pnpm-store/
