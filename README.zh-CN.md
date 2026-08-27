@@ -22,10 +22,14 @@
 
 ## 安装
 
-一条命令安装工作区 bundle，会自动组合出 `dsh-tavily` 行：
+以下任一条命令都会安装 `dsh-tavily` 行（两者装的是同一个插件，安装时用 `--profile <name>` 指定 profile）：
 
 ```sh
+# 从仓库安装 —— 始终是最新源码
 dsh plugin --profile web add github:moguiyu/dsh-tavily
+
+# 从 npm 发布版安装 —— 稳定且计入市场下载量
+dsh plugin --profile web add @moguiyu/dsh-tavily
 ```
 
 刷新浏览器后，**Tavily Search** 卡片会出现在 **Settings → Plugins → plugin configuration**。只有当 Host 半身确实被组合时卡片才会出现——配置页只按 Host 已提供（served）的命名空间派发对应键的卡片。

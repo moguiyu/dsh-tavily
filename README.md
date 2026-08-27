@@ -22,10 +22,14 @@ The built-in `web_search` tool is **never replaced**: Tavily is an *option* on t
 
 ## Install
 
-One command installs the workspace bundle, which composes the combined `dsh-tavily` row:
+Either of these installs the `dsh-tavily` row (both resolve to the same plugin, but install with `--profile <name>`):
 
 ```sh
+# from the repository — always the latest source
 dsh plugin --profile web add github:moguiyu/dsh-tavily
+
+# from the npm release — the stable, marketplace-counted version
+dsh plugin --profile web add @moguiyu/dsh-tavily
 ```
 
 After refreshing the browser, the **Tavily Search** card appears under **Settings → Plugins → plugin configuration**. It only appears when the Host half is actually composed — the configuration tab dispatches the card keyed by the namespace the Host serves.
