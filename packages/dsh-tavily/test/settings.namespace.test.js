@@ -173,7 +173,7 @@ test('a settings-namespace commit disables the tool through the watcher', async 
   const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
   const bench = await boot(home, { enabled: true })
   try {
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
     bench.settings.fire({ enabled: false })
     await new Promise((resolve) => setTimeout(resolve, 20))
     assert.equal(existsSync(join(home, 'tavily-tool.json')), true)
@@ -202,7 +202,7 @@ test('route toggle converges on settings.update and re-enables the tool', async 
     await bench.routes['/api/tavily-tool'](request(true), on)
     await new Promise((resolve) => setTimeout(resolve, 20))
     assert.equal(on.body.enabled, true)
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })

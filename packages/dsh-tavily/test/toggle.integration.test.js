@@ -112,7 +112,7 @@ test('combined plugin honors persisted off on activation and re-enables', async 
 
     rmSync(join(home, 'tavily-tool.json'))
     await bench.fiber.update({ enabled: true }, true)
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })
@@ -134,7 +134,7 @@ test('settings-card toggle hot-unregisters and re-registers tavily_search', asyn
   const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-toggle-'))
   const bench = await boot(home)
   try {
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
 
     const off = toggleResponse()
     await bench.routes['/api/tavily-toggle'](toggleRequest(false), off)
@@ -146,7 +146,7 @@ test('settings-card toggle hot-unregisters and re-registers tavily_search', asyn
     await bench.routes['/api/tavily-toggle'](toggleRequest(true), on)
     await new Promise((resolve) => setTimeout(resolve, 0))
     assert.equal(on.status, 200)
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })
