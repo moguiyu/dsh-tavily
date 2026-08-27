@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily-backend",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Tavily settings backend for DeepSeek Harness: usage endpoint, flat key-list manager, and the opt-in advanced tavily_search tool switch.",
   "type": "module",
   "main": "./src/index.js",

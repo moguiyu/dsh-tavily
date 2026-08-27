@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Opt-in advanced tavily_search tool for DeepSeek Harness with the Tavily Search settings card (rc.8 plugin management). The built-in web_search is never replaced.",
   "type": "module",
   "main": "./src/index.js",
@@ -59,8 +59,8 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "@moguiyu/dsh-tavily-backend": "^0.1.11",
-    "@moguiyu/dsh-tool-tavily-search": "^0.1.11"
+    "@moguiyu/dsh-tavily-backend": "^0.1.12",
+    "@moguiyu/dsh-tool-tavily-search": "^0.1.12"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.8",
