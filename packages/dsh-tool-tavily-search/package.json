@@ -1,7 +1,7 @@
 {
   "name": "@moguiyu/dsh-tool-tavily-search",
-  "version": "0.1.12",
-  "description": "Opt-in advanced tavily_search model tool for DeepSeek Harness, with key rotation/failover. Install @moguiyu/dsh-tavily for the Tavily Search settings card.",
+  "version": "0.2.0",
+  "description": "Opt-in advanced Tavily model tools for DeepSeek Harness (search, extract, map, crawl) with key rotation/failover. Install @moguiyu/dsh-tavily for the Tavily Search settings card. The built-in web_search is never replaced.",
   "type": "module",
   "main": "./src/index.js",
   "exports": {

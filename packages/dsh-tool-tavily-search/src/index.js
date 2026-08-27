@@ -126,7 +126,7 @@ async function callOperation(operation, body, key, exec, timeoutMs) {
         'content-type': 'application/json',
         accept: 'application/json',
         authorization: 'Bearer ' + key,
-        'user-agent': 'dsh-tool-tavily-search/0.1.12',
+        'user-agent': 'dsh-tool-tavily-search/0.2.0',
       },
       body: JSON.stringify(body),
       signal: combined.signal,
