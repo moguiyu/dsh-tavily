@@ -31,17 +31,44 @@ jobs:
           node packages/dsh-tavily/scripts/build-client.mjs
 
       # Publish dependencies first: the combined package depends on these two.
+      # Each step is idempotent: if the exact version is already on npm it is
+      # skipped, so a partial/retried run (or re-running an existing tag) does
+      # not fail on an already-published version.
       - name: Publish @moguiyu/dsh-tool-tavily-search
-        run: npm publish ./packages/dsh-tool-tavily-search --access public
+        run: |
+          PKG=@moguiyu/dsh-tool-tavily-search
+          DIR=./packages/dsh-tool-tavily-search
+          VER=$(node -p "require('$DIR/package.json').version")
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "::notice::$PKG@$VER already published; skipping"
+          else
+            npm publish $DIR --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @moguiyu/dsh-tavily-backend
-        run: npm publish ./packages/dsh-tavily-backend --access public
+        run: |
+          PKG=@moguiyu/dsh-tavily-backend
+          DIR=./packages/dsh-tavily-backend
+          VER=$(node -p "require('$DIR/package.json').version")
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "::notice::$PKG@$VER already published; skipping"
+          else
+            npm publish $DIR --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @moguiyu/dsh-tavily
-        run: npm publish ./packages/dsh-tavily --access public
+        run: |
+          PKG=@moguiyu/dsh-tavily
+          DIR=./packages/dsh-tavily
+          VER=$(node -p "require('$DIR/package.json').version")
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "::notice::$PKG@$VER already published; skipping"
+          else
+            npm publish $DIR --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
