@@ -1,11 +1,14 @@
 # @moguiyu/dsh-tavily
 
-Combined plugin: the opt-in advanced `tavily_search` model tool, the **Tavily Search**
-settings card, and the local HTTP backend for key/usage management.
+Combined plugin: the opt-in advanced Tavily model tools (`tavily_search`, `tavily_extract`,
+`tavily_map`, `tavily_crawl`), the **Tavily Search** settings card, and the local HTTP backend
+for key/usage management.
 
 - **`tavily_search`** — full Tavily surface (`max_results`, `search_depth`, `topic`, `days`,
   `include_answer`, `include_raw_content`, `include_domains`, `exclude_domains`). Opt-in and
   off by default.
+- **`tavily_extract` / `tavily_map` / `tavily_crawl`** — read a known URL's content, map a
+  site's links, or crawl a site and return its pages. Same key-rotation/failover as search.
 - **Settings card** — key list, usage gauge, strategy selector, and the advanced-tool switch.
 - **Plugin-config settings card** — the Host registers the `tavily-search` settings namespace
   and the card is keyed by it (keyed `settings.plugin.item`), so the Plugins configuration tab

@@ -41,13 +41,13 @@ test('tavily_search unregisters when disabled and restores when enabled', async 
   const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-toggle-'))
   const bench = await boot(home)
   try {
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
 
     await bench.fiber.update({ enabled: false }, true)
     assert.deepEqual(bench.ctx.tools.schemas(), [])
 
     await bench.fiber.update({ enabled: true }, true)
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })
@@ -74,7 +74,7 @@ test('persisted tool state wins over plugin config on activation', async () => {
 
     rmSync(join(home, 'tavily-tool.json'))
     await bench.fiber.update({ enabled: true }, true)
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })
@@ -86,7 +86,7 @@ test('legacy tavily-toggle.json still migrates the persisted choice', async () =
   writeFileSync(join(home, 'tavily-toggle.json'), JSON.stringify({ enabled: true }))
   const bench = await boot(home, { enabled: false })
   try {
-    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search'])
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })
