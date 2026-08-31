@@ -7,8 +7,8 @@
  * - tool half — `@moguiyu/dsh-tool-tavily-search` {@link installTavilyTool};
  * - backend half — `@moguiyu/dsh-tavily-backend` {@link installBackend}.
  *
- * This package adds the rc.7 plugin-management seam: the Host registers the
- * `tavily-search` settings namespace (the key the Plugins configuration tab
+ * This package adds the plugin-management seam: the Host installs the
+ * `tavily-search` settings section (the key the Plugins configuration tab
  * pairs the card against). The switch value lives both in that namespace and
  * in `~/.dsh/tavily-tool.json`; every write path converges on
  * `settings.update` (or the state file when no settings service exists),
@@ -20,7 +20,6 @@
  * search provider and never rewrites `web.searchProvider` — `web_search`
  * keeps its native provider.
  */
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { isToolEnabled, installTavilyTool } from '@moguiyu/dsh-tool-tavily-search'
 import { installBackend, readToolState, restoreToolState, writeToolState } from '@moguiyu/dsh-tavily-backend'
@@ -35,16 +34,22 @@ export const Config = z.object({
 
 /**
  * Settings namespace owned by this package. It is the join key between the
- * Host half and the browser card: the rc.7 Plugins configuration tab serves
- * this namespace and dispatches the card registered under the same key.
+ * Host half and the browser card: the Plugins configuration tab serves this
+ * namespace and dispatches the card registered under the same key. A plain
+ * lowercase-hyphenated string since 0.1.2 — the settings provider validates
+ * and brands it on registration (`settingsNamespace()` was removed).
  */
-export const TAVILY_NS = settingsNamespace('tavily-search')
+export const TAVILY_NS = 'tavily-search'
 
 export function apply(ctx, config) {
   // The switch value the current fiber is acting on. Every write path updates
   // this before the row restart so a watcher re-fired after a restart no-ops.
   let lastApplied = isToolEnabled(config)
-  let settingsScope = null
+  // Settings seam state: the attached provider (null on hosts without one)
+  // and the authoritative switch source — the resolved section while the
+  // provider is attached, the composition entry otherwise.
+  let settingsProvider = null
+  let settingsSource = () => config
 
   /** Persist the switch first, then restart this row so the tool (un)registers. */
   async function applySwitchLocal(enabled) {
@@ -66,39 +71,43 @@ export function apply(ctx, config) {
     }
   }
 
-  // First-class settings integration (rc.7 plugin management): register the
-  // `tavily-search` namespace so the Plugins configuration surface serves it
-  // and pairs this package's card. The row config is the composition base
-  // layer; the user document overlays it. Runs whether or not the tool is on.
-  const settings = ctx.get('settings')
-  if (settings !== undefined && settings !== null && typeof settings.register === 'function') {
+  // First-class settings integration (0.1.2 plugin management): install the
+  // `tavily-search` section so the Plugins configuration surface serves it
+  // and pairs this package's card. The row config is the composition entry —
+  // base layer while a settings provider is attached, fallback value when one
+  // detaches — and the user document overlays it. `onChange` re-judges the
+  // switch from the authoritative source on attach, on detach, and on every
+  // committed change. Runtime-optional on purpose: the row boots (state-file
+  // path) even on hosts that never provide a settings service.
+  ctx.inject(['settings'], (settingsCtx) => {
+    const provider = settingsCtx.settings
     try {
-      settingsScope = settings.register(TAVILY_NS, Config, {
-        base: { enabled: config.enabled },
-        applies: 'restart',
+      provider.installSection(ctx, TAVILY_NS, Config, config, {
+        setSource: (current) => { settingsSource = current },
+        onChange: () => {
+          const value = settingsSource()
+          const nextEnabled = value !== null && typeof value === 'object' && typeof value.enabled === 'boolean'
+            ? value.enabled
+            : false
+          applySwitchLocal(nextEnabled).catch((error) => {
+            ctx.logger.warn('tavily-search: applying settings switch failed: %s', error instanceof Error ? error.message : String(error))
+          })
+        },
       })
-      settingsScope.watch((next) => {
-        const nextEnabled = next !== null && typeof next === 'object' && typeof next.enabled === 'boolean'
-          ? next.enabled
-          : false
-        applySwitchLocal(nextEnabled).catch((error) => {
-          ctx.logger.warn('tavily-search: applying settings switch failed: %s', error instanceof Error ? error.message : String(error))
-        })
-      })
+      settingsProvider = provider
     } catch (error) {
-      ctx.logger.warn('tavily-search: settings namespace registration failed: %s', error instanceof Error ? error.message : String(error))
-      settingsScope = null
+      ctx.logger.warn('tavily-search: settings section installation failed: %s', error instanceof Error ? error.message : String(error))
     }
-  }
+  })
 
   installBackend(ctx, {
     enabled: () => isToolEnabled(config),
     async applySwitch(enabled) {
       // Every write converges on one pipeline: the settings namespace when a
-      // settings service is served (its watcher persists and restarts this
+      // settings service is attached (its watcher persists and restarts this
       // row), or the plain state-file path otherwise.
-      if (settings !== undefined && settingsScope !== null) {
-        await settings.update(TAVILY_NS, { enabled })
+      if (settingsProvider !== null) {
+        await settingsProvider.update(TAVILY_NS, { enabled })
       } else {
         await applySwitchLocal(enabled)
       }

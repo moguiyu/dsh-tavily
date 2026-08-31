@@ -41,7 +41,7 @@
     "url": "https://github.com/moguiyu/dsh-tavily.git"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.8"
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-home-paths": "^0.1.2-alpha.2"
   }
 }

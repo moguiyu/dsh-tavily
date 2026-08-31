@@ -9,9 +9,9 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as combinedPlugin from '../src/index.js'
 
 /**
- * The rc.7 plugin-management seam: the Host registers a `tavily-search`
- * settings namespace (the join key for the Plugins configuration tab) and
- * every switch write converges on `settings.update`, whose watcher persists
+ * The plugin-management seam: the Host installs a `tavily-search` settings
+ * section (the join key for the Plugins configuration tab) and every switch
+ * write converges on `settings.update`, whose change notification persists
  * the choice and restarts the row. This suite drives a mock settings service
  * through that pipeline.
  */
@@ -50,28 +50,22 @@ async function boot(home, config = { enabled: true }) {
   const routes = {}
   const registeredRoutes = new Set()
   const settingsMock = {
-    registerCalls: [],
+    installCalls: [],
     updateCalls: [],
-    watchers: [],
+    hooks: null,
+    current: null,
     fire(next) {
-      const watcher = this.watchers[this.watchers.length - 1]
-      if (watcher !== undefined) queueMicrotask(() => watcher(next, undefined))
+      if (this.hooks === null) return
+      this.current = next
+      const hooks = this.hooks
+      queueMicrotask(() => hooks.onChange())
     },
-    register(ns, schema, options) {
-      this.registerCalls.push({ ns, schema, options })
-      const self = this
-      return {
-        watch(callback) {
-          self.watchers.push(callback)
-          return () => {}
-        },
-        update() {
-          return Promise.resolve()
-        },
-        get() {
-          return { enabled: config.enabled }
-        },
-      }
+    installSection(owner, ns, schema, entry, hooks) {
+      this.installCalls.push({ ns, schema, entry })
+      this.hooks = hooks
+      this.current = { enabled: entry.enabled }
+      hooks.setSource(() => this.current)
+      hooks.onChange()
     },
     update(ns, patch) {
       this.updateCalls.push({ ns, patch })
@@ -131,7 +125,7 @@ async function boot(home, config = { enabled: true }) {
     name: 'settings-test',
     apply(inner) {
       inner.provide('settings', {
-        register: (ns, schema, options) => settingsMock.register(ns, schema, options),
+        installSection: (owner, ns, schema, entry, hooks) => settingsMock.installSection(owner, ns, schema, entry, hooks),
         update: (ns, patch) => settingsMock.update(ns, patch),
       })
     },
@@ -152,16 +146,15 @@ async function boot(home, config = { enabled: true }) {
   }
 }
 
-test('registers the tavily-search settings namespace for rc.7 plugin management', async () => {
+test('installs the tavily-search settings section for plugin management', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
   const bench = await boot(home)
   try {
     assert.equal(combinedPlugin.TAVILY_NS, 'tavily-search')
-    assert.equal(bench.settings.registerCalls.length, 1)
-    const call = bench.settings.registerCalls[0]
+    assert.equal(bench.settings.installCalls.length, 1)
+    const call = bench.settings.installCalls[0]
     assert.equal(call.ns, 'tavily-search')
-    assert.deepEqual(call.options.base, { enabled: true })
-    assert.equal(call.options.applies, 'restart')
+    assert.deepEqual(call.entry, { enabled: true })
     assert.equal(typeof call.schema, 'function')
   } finally {
     await bench.dispose()

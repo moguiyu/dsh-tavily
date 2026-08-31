@@ -33,7 +33,7 @@ dsh plugin --profile web add @moguiyu/dsh-tavily
 
 After refreshing the browser, the **Tavily Search** card appears under **Settings → Plugins → plugin configuration**. It only appears when the Host half is actually composed — the configuration tab dispatches the card keyed by the namespace the Host serves.
 
-> **Requirements** — DSH is a development preview (`0.1.0-rc.x`); the keyed plugin-config card needs **0.1.0-rc.7 or newer**. The npm name is the scoped `@moguiyu/dsh-tavily`, not the similarly-named community `dsh-tavily` provider-swap plugin.
+> **Requirements** — DSH is a development preview (`0.1.x-rc/alpha`); the keyed plugin-config card needs **0.1.2-alpha.2 or newer**. The npm name is the scoped `@moguiyu/dsh-tavily`, not the similarly-named community `dsh-tavily` provider-swap plugin.
 
 ## Packages
 

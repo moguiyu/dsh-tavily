@@ -33,7 +33,7 @@ dsh plugin --profile web add @moguiyu/dsh-tavily
 
 刷新浏览器后，**Tavily Search** 卡片会出现在 **Settings → Plugins → plugin configuration**。只有当 Host 半身确实被组合时卡片才会出现——配置页只按 Host 已提供（served）的命名空间派发对应键的卡片。
 
-> **要求** — DSH 为开发者预览版（`0.1.0-rc.x`）；keyed 插件配置卡片需要 **0.1.0-rc.7 或更新**。npm 名为作用域包 `@moguiyu/dsh-tavily`，并非同名社区 `dsh-tavily` 提供方替换插件。
+> **要求** — DSH 为开发者预览版（`0.1.x-rc/alpha`）；keyed 插件配置卡片需要 **0.1.2-alpha.2 或更新**。npm 名为作用域包 `@moguiyu/dsh-tavily`，并非同名社区 `dsh-tavily` 提供方替换插件。
 
 ## 包
 
