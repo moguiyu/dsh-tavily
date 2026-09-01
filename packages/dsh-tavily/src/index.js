@@ -36,8 +36,10 @@ export const Config = z.object({
  * Settings namespace owned by this package. It is the join key between the
  * Host half and the browser card: the Plugins configuration tab serves this
  * namespace and dispatches the card registered under the same key. A plain
- * lowercase-hyphenated string since 0.1.2 — the settings provider validates
- * and brands it on registration (`settingsNamespace()` was removed).
+ * lowercase-hyphenated string, valid on every supported host line: rc.7/rc.8
+ * treat the namespace as a branded string (runtime-identical), and 0.1.2
+ * validates and brands it on registration (`settingsNamespace()` was
+ * removed upstream).
  */
 export const TAVILY_NS = 'tavily-search'
 
@@ -71,30 +73,55 @@ export function apply(ctx, config) {
     }
   }
 
-  // First-class settings integration (0.1.2 plugin management): install the
-  // `tavily-search` section so the Plugins configuration surface serves it
-  // and pairs this package's card. The row config is the composition entry —
-  // base layer while a settings provider is attached, fallback value when one
-  // detaches — and the user document overlays it. `onChange` re-judges the
-  // switch from the authoritative source on attach, on detach, and on every
-  // committed change. Runtime-optional on purpose: the row boots (state-file
-  // path) even on hosts that never provide a settings service.
+  /** Re-judge the switch from a resolved settings value (either seam's shape). */
+  function applySwitchValue(value) {
+    const nextEnabled = value !== null && typeof value === 'object' && typeof value.enabled === 'boolean'
+      ? value.enabled
+      : false
+    applySwitchLocal(nextEnabled).catch((error) => {
+      ctx.logger.warn('tavily-search: applying settings switch failed: %s', error instanceof Error ? error.message : String(error))
+    })
+  }
+
+  // First-class settings integration: install the `tavily-search` section so
+  // the Plugins configuration surface serves it and pairs this package's
+  // card. Runtime-optional on purpose: the row boots (state-file path) even
+  // on hosts that never provide a settings service. Two host seams are
+  // supported by feature detection, so ONE package version covers both host
+  // lines:
+  //
+  // - 0.1.2 (`installSection`) — the row config is the composition entry
+  //   (base layer while a provider is attached, fallback value when one
+  //   detaches); `onChange` re-judges the switch on attach, on detach, and
+  //   on every committed change.
+  // - rc.7/rc.8 (`register`) — the row config is the composition base layer
+  //   and the scope watcher re-judges the switch on every committed change
+  //   (`applies: 'restart'`, the 0.2.0 behavior).
   ctx.inject(['settings'], (settingsCtx) => {
     const provider = settingsCtx.settings
     try {
-      provider.installSection(ctx, TAVILY_NS, Config, config, {
-        setSource: (current) => { settingsSource = current },
-        onChange: () => {
-          const value = settingsSource()
-          const nextEnabled = value !== null && typeof value === 'object' && typeof value.enabled === 'boolean'
-            ? value.enabled
-            : false
-          applySwitchLocal(nextEnabled).catch((error) => {
-            ctx.logger.warn('tavily-search: applying settings switch failed: %s', error instanceof Error ? error.message : String(error))
-          })
-        },
-      })
-      settingsProvider = provider
+      if (typeof provider.installSection === 'function') {
+        provider.installSection(ctx, TAVILY_NS, Config, config, {
+          setSource: (current) => { settingsSource = current },
+          onChange: () => { applySwitchValue(settingsSource()) },
+        })
+        settingsProvider = provider
+        return
+      }
+      if (typeof provider.register === 'function') {
+        const scope = provider.register(TAVILY_NS, Config, {
+          base: { enabled: config.enabled },
+          applies: 'restart',
+        })
+        if (scope !== undefined && scope !== null && typeof scope.watch === 'function') {
+          scope.watch((next) => { applySwitchValue(next) })
+          settingsProvider = provider
+        } else {
+          ctx.logger.warn('tavily-search: settings scope exposes no watcher; using the state-file path')
+        }
+        return
+      }
+      ctx.logger.warn('tavily-search: settings service exposes neither installSection nor register; using the state-file path')
     } catch (error) {
       ctx.logger.warn('tavily-search: settings section installation failed: %s', error instanceof Error ? error.message : String(error))
     }
