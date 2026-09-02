@@ -9,11 +9,15 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as combinedPlugin from '../src/index.js'
 
 /**
- * The rc.7 plugin-management seam: the Host registers a `tavily-search`
- * settings namespace (the join key for the Plugins configuration tab) and
- * every switch write converges on `settings.update`, whose watcher persists
- * the choice and restarts the row. This suite drives a mock settings service
- * through that pipeline.
+ * The plugin-management seam: the Host installs a `tavily-search` settings
+ * section (the join key for the Plugins configuration tab) and every switch
+ * write converges on `settings.update`, whose change notification persists
+ * the choice and restarts the row. ONE package version supports both host
+ * seam generations by feature detection, so this suite drives a mock
+ * settings service of each shape through that pipeline:
+ *
+ * - `installSection` — the 0.1.2 seam (composition entry + hooks);
+ * - `register` — the rc.7/rc.8 seam (base layer + scope watcher).
  */
 
 function request(enabled) {
@@ -42,7 +46,7 @@ function response() {
 }
 
 /** Boot the combined plugin with a mock settings service that records and can re-fire. */
-async function boot(home, config = { enabled: true }) {
+async function boot(home, config = { enabled: true }, settingsShape = 'installSection') {
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = home
   const ctx = new Context()
@@ -50,14 +54,43 @@ async function boot(home, config = { enabled: true }) {
   const routes = {}
   const registeredRoutes = new Set()
   const settingsMock = {
+    installCalls: [],
     registerCalls: [],
     updateCalls: [],
+    hooks: null,
     watchers: [],
+    current: null,
     fire(next) {
+      if (settingsShape === 'installSection') {
+        if (this.hooks === null) return
+        this.current = next
+        const hooks = this.hooks
+        queueMicrotask(() => hooks.onChange())
+        return
+      }
       const watcher = this.watchers[this.watchers.length - 1]
       if (watcher !== undefined) queueMicrotask(() => watcher(next, undefined))
     },
-    register(ns, schema, options) {
+    update(ns, patch) {
+      this.updateCalls.push({ ns, patch })
+      this.fire({ enabled: patch.enabled })
+      return Promise.resolve()
+    },
+  }
+  if (settingsShape === 'installSection') {
+    // 0.1.2 seam: the provider installs the consumer's composition entry and
+    // notifies through hooks; the authoritative value lives in `current`.
+    settingsMock.installSection = function (owner, ns, schema, entry, hooks) {
+      this.installCalls.push({ ns, schema, entry })
+      this.hooks = hooks
+      this.current = { enabled: entry.enabled }
+      hooks.setSource(() => this.current)
+      hooks.onChange()
+    }
+  } else {
+    // rc.7/rc.8 seam: the provider registers the namespace and hands back a
+    // scope whose watcher fires on committed changes.
+    settingsMock.register = function (ns, schema, options) {
       this.registerCalls.push({ ns, schema, options })
       const self = this
       return {
@@ -65,19 +98,8 @@ async function boot(home, config = { enabled: true }) {
           self.watchers.push(callback)
           return () => {}
         },
-        update() {
-          return Promise.resolve()
-        },
-        get() {
-          return { enabled: config.enabled }
-        },
       }
-    },
-    update(ns, patch) {
-      this.updateCalls.push({ ns, patch })
-      this.fire({ enabled: patch.enabled })
-      return Promise.resolve()
-    },
+    }
   }
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(ToolRuntime, {})
@@ -130,10 +152,18 @@ async function boot(home, config = { enabled: true }) {
   await ctx.plugin({
     name: 'settings-test',
     apply(inner) {
-      inner.provide('settings', {
-        register: (ns, schema, options) => settingsMock.register(ns, schema, options),
-        update: (ns, patch) => settingsMock.update(ns, patch),
-      })
+      inner.provide('settings', settingsShape === 'installSection'
+        ? {
+            // Only the 0.1.2 methods: the plugin's feature detection must see
+            // a provider without `register` and take this path.
+            installSection: (owner, ns, schema, entry, hooks) => settingsMock.installSection(owner, ns, schema, entry, hooks),
+            update: (ns, patch) => settingsMock.update(ns, patch),
+          }
+        : {
+            // Only the rc.7/rc.8 methods: no `installSection` in sight.
+            register: (ns, schema, options) => settingsMock.register(ns, schema, options),
+            update: (ns, patch) => settingsMock.update(ns, patch),
+          })
     },
   })
   const fiber = ctx.plugin(combinedPlugin, config)
@@ -152,16 +182,15 @@ async function boot(home, config = { enabled: true }) {
   }
 }
 
-test('registers the tavily-search settings namespace for rc.7 plugin management', async () => {
+test('installs the tavily-search settings section for plugin management', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
   const bench = await boot(home)
   try {
     assert.equal(combinedPlugin.TAVILY_NS, 'tavily-search')
-    assert.equal(bench.settings.registerCalls.length, 1)
-    const call = bench.settings.registerCalls[0]
+    assert.equal(bench.settings.installCalls.length, 1)
+    const call = bench.settings.installCalls[0]
     assert.equal(call.ns, 'tavily-search')
-    assert.deepEqual(call.options.base, { enabled: true })
-    assert.equal(call.options.applies, 'restart')
+    assert.deepEqual(call.entry, { enabled: true })
     assert.equal(typeof call.schema, 'function')
   } finally {
     await bench.dispose()
@@ -188,6 +217,67 @@ test('a settings-namespace commit disables the tool through the watcher', async 
 test('route toggle converges on settings.update and re-enables the tool', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
   const bench = await boot(home, { enabled: true })
+  try {
+    const off = response()
+    await bench.routes['/api/tavily-tool'](request(false), off)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(off.status, 200)
+    assert.equal(off.body.enabled, false)
+    assert.deepEqual(bench.settings.updateCalls, [{ ns: 'tavily-search', patch: { enabled: false } }])
+    assert.deepEqual(JSON.parse(readFileSync(join(home, 'tavily-tool.json'), 'utf8')), { enabled: false })
+    assert.deepEqual(bench.ctx.tools.schemas(), [])
+
+    const on = response()
+    await bench.routes['/api/tavily-tool'](request(true), on)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(on.body.enabled, true)
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
+  } finally {
+    await bench.dispose()
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+// --- rc.7/rc.8 seam (register + scope watcher): the same pipeline on the
+// --- older host generation, reached by feature detection.
+
+test('rc.7/rc.8 hosts: registers the namespace with the row config as base', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
+  const bench = await boot(home, { enabled: true }, 'register')
+  try {
+    assert.equal(combinedPlugin.TAVILY_NS, 'tavily-search')
+    assert.equal(bench.settings.installCalls.length, 0)
+    assert.equal(bench.settings.registerCalls.length, 1)
+    const call = bench.settings.registerCalls[0]
+    assert.equal(call.ns, 'tavily-search')
+    assert.deepEqual(call.options.base, { enabled: true })
+    assert.equal(call.options.applies, 'restart')
+    assert.equal(typeof call.schema, 'function')
+  } finally {
+    await bench.dispose()
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('rc.7/rc.8 hosts: a namespace commit disables the tool through the watcher', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
+  const bench = await boot(home, { enabled: true }, 'register')
+  try {
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl'])
+    bench.settings.fire({ enabled: false })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(existsSync(join(home, 'tavily-tool.json')), true)
+    assert.deepEqual(JSON.parse(readFileSync(join(home, 'tavily-tool.json'), 'utf8')), { enabled: false })
+    assert.deepEqual(bench.ctx.tools.schemas(), [])
+  } finally {
+    await bench.dispose()
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('rc.7/rc.8 hosts: route toggle converges on provider update and re-enables the tool', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-ns-'))
+  const bench = await boot(home, { enabled: true }, 'register')
   try {
     const off = response()
     await bench.routes['/api/tavily-tool'](request(false), off)

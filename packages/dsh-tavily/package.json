@@ -1,7 +1,7 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.2.0",
-  "description": "Opt-in advanced Tavily model tools for DeepSeek Harness with the Tavily Search settings card (rc.8 plugin management). The built-in web_search is never replaced.",
+  "version": "0.2.1",
+  "description": "Opt-in advanced Tavily model tools for DeepSeek Harness with the Tavily Search settings card (rc.7/rc.8 and 0.1.2 plugin management). The built-in web_search is never replaced.",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
@@ -53,17 +53,17 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.8",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.8",
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.8"
+    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.8 || ^0.1.2-alpha.2",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.8 || ^0.1.2-alpha.2",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.8 || ^0.1.2-alpha.2"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "@moguiyu/dsh-tavily-backend": "^0.1.12",
-    "@moguiyu/dsh-tool-tavily-search": "^0.2.0"
+    "@moguiyu/dsh-tavily-backend": "^0.2.1",
+    "@moguiyu/dsh-tool-tavily-search": "^0.2.1"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.8",
-    "@deepseek-ai/dsh-system-prompt": "^0.1.0-rc.8"
+    "@deepseek-ai/dsh-settings": "^0.1.2-alpha.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.2-alpha.2"
   }
 }
