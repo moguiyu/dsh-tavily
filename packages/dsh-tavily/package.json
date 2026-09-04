@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Opt-in advanced Tavily model tools for DeepSeek Harness with the Tavily Search settings card (rc.7/rc.8 and 0.1.2 plugin management). The built-in web_search is never replaced.",
   "type": "module",
   "main": "./src/index.js",

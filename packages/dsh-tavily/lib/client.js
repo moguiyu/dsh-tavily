@@ -285,8 +285,12 @@ window.__ModuleLoader__.load({
 
     const isOff = enabled === false
 
-    return react.createElement('div', { style: { border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, minWidth: 0, overflow: 'hidden' } },
-      react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
+    // Card box mirrors the native plugin-config card (PluginCard.module.css,
+    // ui-settings-plugins): bg-layer-3 fill, .5px border-l4, 16px radius,
+    // hover/open border lift, and the open state's bg-layer-2 upgrade — so
+    // the card sits at the same elevation as native cards in dark mode too.
+    return react.createElement('div', { className: expanded ? 'dts-card dts-card-open' : 'dts-card', style: { minWidth: 0 } },
+      react.createElement('style', null, '.dts-card{border:.5px solid var(--dsw-alias-border-l4);border-radius:16px;background:var(--dsw-alias-bg-layer-3);transition:border-color .16s,background .16s}.dts-card:hover{border-color:var(--dsw-alias-label-dimmed)}.dts-card-open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
       react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 52, boxSizing: 'border-box' } },
         react.createElement('button', {
           type: 'button',
