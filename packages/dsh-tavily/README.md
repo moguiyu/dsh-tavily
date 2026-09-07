@@ -13,7 +13,7 @@ for key/usage management.
 - **Plugin-config settings card** — the Host installs the `tavily-search` settings section
   and the card is keyed by it (keyed `settings.plugin.item`), so the Plugins configuration tab
   serves the card exactly when this plugin is composed (needs DSH **0.1.0-rc.7 or newer**,
-  including `0.1.2-alpha.x` — both seam generations are detected at runtime).
+  including `0.1.2-alpha.x` and the `0.1.3` line — both seam generations are detected at runtime).
   The switch writes the namespace and restarts the row; the choice is mirrored to
   `~/.dsh/tavily-tool.json`.
 - **`web_search` is never replaced** — no `ctx.web` provider is registered and
