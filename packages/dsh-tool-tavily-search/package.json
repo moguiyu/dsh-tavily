@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tool-tavily-search",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Opt-in advanced Tavily model tools for DeepSeek Harness (search, extract, map, crawl) with key rotation/failover; supports the 0.1.2-0.1.5 plugin lines. Install @moguiyu/dsh-tavily for the Tavily Search settings card. The built-in web_search is never replaced.",
   "type": "module",
   "main": "./src/index.js",
@@ -17,12 +17,24 @@
     "LICENSE"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "rc.8": "compatible",
+        "0.1.2-alpha.2": "compatible",
+        "0.1.5-alpha.2": "compatible",
+        "0.1.5-rc.1": "compatible",
+        "0.1.5-rc.2": "compatible"
+      }
     }
   },
   "scripts": {
