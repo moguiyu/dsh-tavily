@@ -35,7 +35,7 @@ After refreshing the browser, the **Tavily Search** card appears under **Setting
 
 > **Requirements** — DSH is a development preview (`0.1.x-rc/alpha`); the keyed plugin-config card needs **0.1.0-rc.7 or newer** (including `0.1.2-alpha.x`, the `0.1.3` line, the `0.1.5` line, and the `0.1.6` line up to `0.1.6-alpha.1`). The npm name is the scoped `@moguiyu/dsh-tavily`, not the similarly-named community `dsh-tavily` provider-swap plugin.
 
-> **Compatibility** — one version covers every current host line: on DSH `0.1.0-rc.7` – `0.1.1-rc.x` the plugin uses the rc.7/rc.8 settings seam; on DSH `0.1.2-alpha.2+` (covering the whole `0.1.3` line and the `0.1.5`/`0.1.6` lines, alpha/RC included) it uses the `installSection` seam — detected at runtime, no extra install step. Peer ranges accept `^0.1.5-0` and `^0.1.6-0`, so the `0.1.5` and `0.1.6` prereleases count as satisfied.
+> **Compatibility** — one version covers every current host line: on DSH `0.1.0-rc.7` – `0.1.1-rc.x` the plugin uses the rc.7/rc.8 settings seam; on DSH `0.1.2-alpha.2+` (covering the whole `0.1.3` line and the `0.1.5`/`0.1.6` lines, alpha/RC included) it uses the `installSection` seam — detected at runtime, no extra install step. Peer ranges list one comparator per host tuple (`^0.1.0-rc.7`, `^0.1.1-rc.1`, `^0.1.2-alpha.2`, `^0.1.3-alpha.1`, `^0.1.5-0`, `^0.1.6-0`), because prerelease comparators never cascade — a new host line means a new comparator, not a widened old one. Live-tested on `0.1.0-rc.8`, `0.1.2-alpha.2`, `0.1.3-alpha.2`, `0.1.5-rc.2` and `0.1.6-alpha.1`.
 
 ## Packages
 
