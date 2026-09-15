@@ -10,3 +10,8 @@ docs/
 # Local pnpm artifacts (CI and release use npm; the pnpm lock is not shipped)
 pnpm-lock.yaml
 .pnpm-store/
+
+# Local tooling caches created by the commands in AGENTS.md §6/§7: the sandbox
+# blocks gh's default ~/.cache/gh, and the global npm cache is not writable here
+.gh-cache/
+.npm-cache-tmp/
