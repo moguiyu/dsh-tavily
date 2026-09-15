@@ -159,10 +159,11 @@ async function collectStoredKeys(credentials) {
  * persistence pipeline:
  *
  * - `hooks.enabled()` — current advanced-tool switch state;
- * - `hooks.applySwitch(enabled)` — persist the choice and hot-restart the
- *   owning row. The standalone backend restarts `include:tool-tavily-search`;
- *   the combined package writes through the `tavily-search` settings
- *   namespace instead.
+ * - `hooks.applySwitch(enabled)` — persist the choice and (un)register the
+ *   tool half. The standalone backend flips the tool row's `tavilyTools`
+ *   service in place (falling back to a `include:tool-tavily-search` restart
+ *   only for an older tool row); the combined package writes through the
+ *   `tavily-search` settings namespace and owns the tool half directly.
  */
 export function installBackend(ctx, hooks) {
   const credentials = ctx.get('credentials')
@@ -356,9 +357,21 @@ export function installBackend(ctx, hooks) {
 }
 
 export function apply(ctx) {
-  const loader = ctx.get('loader')
-
+  /**
+   * Flip the tool half. The preferred path is the `tavilyTools` service the tool
+   * row publishes: it registers/disposes in place, so the switch is immediate and
+   * keeps working on 0.1.6. The loader restart below survives only as a fallback
+   * for a tool row too old to publish the service — a restart re-mounts the fiber
+   * into a scope the agent does not see, leaving the tools registered nowhere
+   * (see AGENTS.md §9 gate 5).
+   */
   async function applyToolEnabled(enabled) {
+    const tools = ctx.get('tavilyTools')
+    if (tools !== undefined && tools !== null && typeof tools.set === 'function') {
+      tools.set(enabled)
+      return
+    }
+    const loader = ctx.get('loader')
     if (loader === undefined) return
     const tool = loader.resolve(TOOL_ROW)
     if (tool === undefined || tool === null || tool.fiber === undefined) return
@@ -368,8 +381,8 @@ export function apply(ctx) {
   installBackend(ctx, {
     enabled: () => readToolEnabled(),
     async applySwitch(enabled) {
-      // Persist first: the row update restarts the tool row, whose apply()
-      // reads this file to decide whether to register.
+      // Persist first: whichever path runs, the tool half reads this file to
+      // decide whether to register.
       const previous = readToolState()
       writeToolState(enabled)
       try {

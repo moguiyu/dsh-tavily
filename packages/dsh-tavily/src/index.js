@@ -11,9 +11,15 @@
  * `tavily-search` settings section (the key the Plugins configuration tab
  * pairs the card against). The switch value lives both in that namespace and
  * in `~/.dsh/tavily-tool.json`; every write path converges on
- * `settings.update` (or the state file when no settings service exists),
- * persisted first, then the row restarts itself so the tool registers or
- * unregisters cleanly.
+ * `settings.update` (or the state file when no settings service exists).
+ *
+ * The switch owns the tool half's lifecycle DIRECTLY: it holds the disposer
+ * returned by {@link installTavilyTool} and disposes / re-installs it in place.
+ * Earlier versions instead restarted the composing row and let `apply()` re-run;
+ * that is gone on purpose. A row restart on 0.1.6 re-mounts the fiber into a
+ * scope the agent does not see, so the tools ended up registered nowhere and
+ * stayed missing for every session until DSH restarted (AGENTS.md §9 gate 5).
+ * Do not reintroduce the restart.
  *
  * The settings-card switch controls ONLY the opt-in `tavily_search` tool. The
  * built-in `web_search` tool is never replaced: this package registers no web
@@ -26,7 +32,7 @@ import { installBackend, readToolState, restoreToolState, writeToolState } from 
 
 export const name = 'dsh-tavily'
 
-export const inject = ['tools', 'webServer', 'credentials', 'systemPrompt', 'loader']
+export const inject = ['tools', 'webServer', 'credentials', 'systemPrompt']
 
 export const Config = z.object({
   enabled: z.boolean().default(false),
@@ -44,31 +50,52 @@ export const Config = z.object({
 export const TAVILY_NS = 'tavily-search'
 
 export function apply(ctx, config) {
-  // The switch value the current fiber is acting on. Every write path updates
-  // this before the row restart so a watcher re-fired after a restart no-ops.
+  // The switch value this fiber is acting on. Every write path updates it
+  // before (un)registering, so a watcher re-fired afterwards no-ops.
   let lastApplied = isToolEnabled(config)
   // Settings seam state: the attached provider (null on hosts without one)
   // and the authoritative switch source — the resolved section while the
   // provider is attached, the composition entry otherwise.
   let settingsProvider = null
   let settingsSource = () => config
+  // The live registration of the tool half, or null while it is off.
+  let disposeTools = null
 
-  /** Persist the switch first, then restart this row so the tool (un)registers. */
+  /**
+   * Add or remove the tool half to match `enabled`. This is the whole switch:
+   * `installTavilyTool` hands back a disposer covering its tools and prompt
+   * sections, so turning the capability off is a disposal rather than a row
+   * restart. See the module header for why the restart is gone.
+   */
+  function setTools(enabled) {
+    if (enabled) {
+      if (disposeTools === null) disposeTools = installTavilyTool(ctx)
+      return
+    }
+    if (disposeTools !== null) {
+      const dispose = disposeTools
+      disposeTools = null
+      dispose()
+    }
+  }
+
+  // Seed from the composition entry / persisted switch, and hand the fiber the
+  // teardown so unloading the row leaves nothing registered.
+  setTools(lastApplied)
+  ctx.effect(() => () => { setTools(false) })
+
+  /** Persist the switch, then (un)register the tool half in place. */
   async function applySwitchLocal(enabled) {
     if (enabled === lastApplied) return
-    lastApplied = enabled
     const previous = readToolState()
+    lastApplied = enabled
     writeToolState(enabled)
     try {
-      const loader = ctx.get('loader')
-      const self = loader !== undefined && loader !== null ? loader.resolve('include:dsh-tavily') : undefined
-      if (self === undefined || self === null || self.fiber === undefined) {
-        throw new Error('dsh-tavily: row include:dsh-tavily is not loaded')
-      }
-      await self.fiber.update({ enabled }, true)
+      setTools(enabled)
     } catch (error) {
       lastApplied = previous !== null ? previous.enabled : (config.enabled !== false)
       restoreToolState(previous)
+      setTools(lastApplied)
       throw error
     }
   }
@@ -131,8 +158,8 @@ export function apply(ctx, config) {
     enabled: () => isToolEnabled(config),
     async applySwitch(enabled) {
       // Every write converges on one pipeline: the settings namespace when a
-      // settings service is attached (its watcher persists and restarts this
-      // row), or the plain state-file path otherwise.
+      // settings service is attached (its watcher persists and re-applies the
+      // switch in place), or the plain state-file path otherwise.
       if (settingsProvider !== null) {
         await settingsProvider.update(TAVILY_NS, { enabled })
       } else {
@@ -140,7 +167,4 @@ export function apply(ctx, config) {
       }
     },
   })
-
-  if (!isToolEnabled(config)) return
-  installTavilyTool(ctx)
 }

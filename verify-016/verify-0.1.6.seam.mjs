@@ -49,13 +49,13 @@ for (const dep of HARNESS_DEPS) {
 // The whole install moves in lockstep; the seam package names the line.
 const HARNESS = harnessVersions['@deepseek-ai/dsh-settings']
 
-const installedDir = join(process.env.HOME, '.dsh/profiles/web/node_modules/@moguiyu/dsh-tavily')
-const installedPkg = JSON.parse(readFileSync(join(installedDir, 'package.json'), 'utf8'))
+const combinedPkg = (await import('@moguiyu/dsh-tavily/package.json', { with: { type: 'json' } })).default
+const combinedDir = fileURLToPath(new URL('node_modules/@moguiyu/dsh-tavily', import.meta.url))
 
 console.log('harness line: ' + HARNESS +
   '  (' + HARNESS_DEPS.map((d) => d + ' ' + harnessVersions['@deepseek-ai/' + d]).join(', ') + ')')
 console.log('harness cordis: ' + cordisPkg.version)
-console.log('plugin under test: @moguiyu/dsh-tavily ' + installedPkg.version)
+console.log('plugin under test: @moguiyu/dsh-tavily ' + combinedPkg.version + '  (' + combinedDir + ')')
 
 const settingsFile = join(home, 'settings.json')
 class FileSettingsProvider extends SettingsProvider {
@@ -164,8 +164,17 @@ check('settings.update drives the switch pipeline (state file mirrors the namesp
   assert.ok(existsSync(stateFile), stateFile)
   assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')), { enabled: false })
 })
-check('the row restart went through the loader seam', () =>
-  assert.ok(restartCalls.includes('include:dsh-tavily:update'), JSON.stringify(restartCalls)))
+check('the switch unregisters the tools in place', () =>
+  assert.equal(tools.get('tavily_search'), undefined))
+check('the switch did NOT restart the composing row', () =>
+  assert.deepEqual(restartCalls, []))
+
+await settings.update('tavily-search', { enabled: true })
+await new Promise((r) => setTimeout(r, 30))
+check('the switch re-registers the tools in place', () =>
+  assert.ok(tools.get('tavily_search')))
+check('the off/on round trip still never restarted the row', () =>
+  assert.deepEqual(restartCalls, []))
 
 console.log(results.join('\n'))
 console.log('live ' + HARNESS + ' seam verification: PASS (' + results.length + ' checks)')

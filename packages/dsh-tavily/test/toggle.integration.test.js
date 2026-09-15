@@ -15,6 +15,9 @@ async function boot(home, config = { enabled: true }) {
   const holder = { fiber: null }
   const routes = {}
   const registeredRoutes = new Set()
+  // Every loader resolution is recorded so a test can prove the switch does NOT
+  // need the loader — reaching for it means the row restart is back.
+  const loaderCalls = []
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(ToolRuntime, {})
   await ctx.plugin({
@@ -38,6 +41,7 @@ async function boot(home, config = { enabled: true }) {
     apply(inner) {
       inner.provide('loader', {
         resolve(id) {
+          loaderCalls.push(id)
           if (id === 'include:dsh-tavily') {
             return holder.fiber === null ? undefined : { fiber: holder.fiber }
           }
@@ -70,6 +74,7 @@ async function boot(home, config = { enabled: true }) {
     ctx,
     fiber,
     routes,
+    loaderCalls,
     async dispose() {
       await ctx.fiber.dispose()
       if (previousHome === undefined) delete process.env.DSH_HOME
@@ -124,6 +129,38 @@ test('combined advanced tool defaults to off with no persisted state', async () 
   const bench = await boot(home, {})
   try {
     assert.deepEqual(bench.ctx.tools.schemas(), [])
+  } finally {
+    await bench.dispose()
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('the switch toggles the tools in place and never restarts the composing row', async () => {
+  // Regression guard for the 0.1.6 failure: the switch used to restart the row
+  // (via the loader) so that apply() would re-run. On 0.1.6 that re-mounts the
+  // fiber into a scope the agent does not see, so the tools came back registered
+  // nowhere and stayed missing for every session until DSH restarted. The switch
+  // must own the tool lifecycle directly — see AGENTS.md §9 gate 5.
+  const home = mkdtempSync(join(tmpdir(), 'dsh-tavily-toggle-'))
+  const bench = await boot(home)
+  const names = ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl']
+  try {
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), names)
+    assert.deepEqual(bench.loaderCalls, [], 'activation must not resolve the loader')
+
+    const off = toggleResponse()
+    await bench.routes['/api/tavily-tool'](toggleRequest(false), off)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    assert.equal(off.status, 200)
+    assert.deepEqual(bench.ctx.tools.schemas(), [], 'tools must be unregistered while off')
+
+    const on = toggleResponse()
+    await bench.routes['/api/tavily-tool'](toggleRequest(true), on)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    assert.equal(on.status, 200)
+    assert.deepEqual(bench.ctx.tools.schemas().map((schema) => schema.name), names, 'tools must come back on')
+
+    assert.deepEqual(bench.loaderCalls, [], 'the switch must not resolve the loader (no row restart)')
   } finally {
     await bench.dispose()
     rmSync(home, { recursive: true, force: true })

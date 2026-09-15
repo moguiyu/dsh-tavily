@@ -461,6 +461,16 @@ const NAVIGATION_PARAMETERS = {
 export function installTavilyTool(ctx) {
   let rotation = 0
 
+  // Every registration below is collected so the composing row can turn this
+  // half off and on at runtime. Without this, changing the registered tool set
+  // meant restarting the composing row — which on 0.1.6 re-mounts the fiber
+  // into a scope the agent does not see, leaving the tools registered nowhere
+  // (see AGENTS.md §9 gate 5).
+  const disposers = []
+  const tools = {
+    register: (definition) => { disposers.push(ctx.tools.register(definition)) },
+  }
+
   async function resolveKeys() {
     const credentials = ctx.get('credentials')
     if (credentials !== undefined) {
@@ -503,7 +513,7 @@ export function installTavilyTool(ctx) {
     throw new Error(`tavily_${operation}: all ${attempts} configured key(s) failed with HTTP ${lastRetryable} (invalid key or rate limit)`)
   }
 
-  ctx.tools.register(defineTool({
+  tools.register(defineTool({
     name: 'tavily_search',
     description: 'Search the web through the Tavily API. Returns ranked results with titles, URLs, snippets, relevance scores, and an optional generated answer. Supports basic/advanced depth, news topic with a freshness window, and domain allow/deny filters.',
     parameters: {
@@ -555,7 +565,7 @@ export function installTavilyTool(ctx) {
     },
   }))
 
-  ctx.tools.register(defineTool({
+  tools.register(defineTool({
     name: 'tavily_extract',
     description: 'Extract complete content from one or more HTTP(S) URLs through Tavily. Use it to retrieve pages directly when a URL is known.',
     parameters: {
@@ -575,7 +585,7 @@ export function installTavilyTool(ctx) {
     },
   }))
 
-  ctx.tools.register(defineTool({
+  tools.register(defineTool({
     name: 'tavily_map',
     description: 'Discover URLs in a website through Tavily without extracting their page content. Use it to inspect site structure before selecting pages to extract or crawl.',
     parameters: NAVIGATION_PARAMETERS,
@@ -588,7 +598,7 @@ export function installTavilyTool(ctx) {
     },
   }))
 
-  ctx.tools.register(defineTool({
+  tools.register(defineTool({
     name: 'tavily_crawl',
     description: 'Crawl a website through Tavily and return the complete extracted content of discovered pages.',
     parameters: {
@@ -608,13 +618,16 @@ export function installTavilyTool(ctx) {
   }))
 
   const systemPrompt = ctx.get('systemPrompt')
+  const section = (value) => {
+    if (systemPrompt !== undefined) disposers.push(systemPrompt.section(value))
+  }
   if (systemPrompt !== undefined) {
-    systemPrompt.section({
+    section({
       name: 'tool:tavily_search',
       order: 111,
       text: 'Use the tavily_search tool for web search powered by the Tavily API. It supports result count, search depth, news topic with a freshness window, domain allow/deny filters, and an optional generated answer (include_answer). Cite the returned URLs as markdown links in your answer.',
     })
-    systemPrompt.section({
+    section({
       name: 'tool:tavily_direct',
       order: 112,
       text: 'For pages already known by URL, use tavily_extract to pull their full content, tavily_map to discover a site\'s links without fetching content, and tavily_crawl to capture the extracted content of an entire site. These are optional extras on top of the built-in web_search tool, which is never replaced.',
@@ -631,9 +644,47 @@ export function installTavilyTool(ctx) {
       ctx.logger.warn('tavily_search: credential describe failed: %s', error instanceof Error ? error.message : String(error))
     })
   }
+
+  /**
+   * Unregister everything this install registered. Idempotent: every disposer
+   * is popped as it runs, so a second call is a no-op.
+   */
+  return function disposeTavilyTool() {
+    while (disposers.length > 0) {
+      const dispose = disposers.pop()
+      try {
+        dispose()
+      } catch (error) {
+        ctx.logger.warn('tavily_search: tool teardown failed: %s', error instanceof Error ? error.message : String(error))
+      }
+    }
+  }
 }
 
 export function apply(ctx, config) {
-  if (!isToolEnabled(config)) return
-  installTavilyTool(ctx)
+  let disposeTools = null
+
+  function setTools(enabled) {
+    if (enabled) {
+      if (disposeTools === null) disposeTools = installTavilyTool(ctx)
+      return
+    }
+    if (disposeTools !== null) {
+      const dispose = disposeTools
+      disposeTools = null
+      dispose()
+    }
+  }
+
+  setTools(isToolEnabled(config))
+  ctx.effect(() => () => { setTools(false) })
+
+  // A companion row (the standalone backend) flips this half through here
+  // rather than restarting this row — a restart on 0.1.6 re-mounts the fiber
+  // into a scope the agent does not see (see AGENTS.md §9 gate 5). With no
+  // companion, the fiber teardown above is the only lifecycle event.
+  ctx.provide('tavilyTools', {
+    get enabled() { return disposeTools !== null },
+    set(enabled) { setTools(enabled !== false) },
+  })
 }
