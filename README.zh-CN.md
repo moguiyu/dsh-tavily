@@ -9,7 +9,7 @@
 内置的 `web_search` 工具**永不被替换**：Tavily 是原生搜索的*补充*，而不是替代。本插件不注册任何网页搜索 provider，也不会改写 `web.searchProvider`。
 
 <p align="center">
-  <img src="assets/tavily-search.png" alt="Tavily 卡片：脱敏 Key 列表、绿色主 Key 圆点、每 Key 用量环与 Key 使用策略选择器" width="560" />
+  <img src="assets/tavily-search.png" alt="Plugins 页面上的 Tavily 卡片：脱敏 Key 列表、绿色主 Key 圆点、每 Key 用量环与 Key 使用策略选择器" width="760" />
 </p>
 
 ## 亮点

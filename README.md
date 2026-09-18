@@ -9,7 +9,7 @@ Tavily web search for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek
 The built-in `web_search` tool is **never replaced**: Tavily is an *addition* to the native search, not a swap-in for it. This plugin registers no web-search provider and never rewrites `web.searchProvider`.
 
 <p align="center">
-  <img src="assets/tavily-search.png" alt="The Tavily card: masked key list with the green primary dot, per-key usage circles, and the key-usage strategy selector" width="560" />
+  <img src="assets/tavily-search.png" alt="The Tavily card on the Plugins page: masked key list with the green primary dot, per-key usage circles, and the key-usage strategy selector" width="760" />
 </p>
 
 ## Highlights
