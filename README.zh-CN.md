@@ -28,6 +28,10 @@
    **`https://github.com/moguiyu/dsh-tavily`**。该输入框也接受 tarball 与本机绝对路径。
 3. 点击 **Install**，再点击 **Enable now**。刚装好的 bundle 默认是**关闭**的，需要手动启用。
 
+<p align="center">
+  <img src="assets/install-add-plugin.png" alt="Add plugin 对话框，包名栏中填入 @moguiyu/dsh-tavily" width="640" />
+</p>
+
 随后卡片会渲染在 `dsh-tavily` 这个 bundle 自己的页面上 —— 位于描述与其行列表之间。
 
 ### 用命令行安装

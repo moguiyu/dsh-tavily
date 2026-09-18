@@ -30,6 +30,10 @@ The built-in `web_search` tool is **never replaced**: Tavily is an *addition* to
 3. Press **Install**, then **Enable now**. A freshly installed bundle stays switched **off** until
    you enable it.
 
+<p align="center">
+  <img src="assets/install-add-plugin.png" alt="The Add plugin dialog with @moguiyu/dsh-tavily entered in the package name field" width="640" />
+</p>
+
 The card then renders on the `dsh-tavily` bundle's own page — between its description and its rows.
 
 ### From the CLI
