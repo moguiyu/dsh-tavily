@@ -78,7 +78,7 @@ window.__ModuleLoader__.load({
     )
   }
 
-  function TavilyCard() {
+  function TavilySettingsCard() {
     const [enabled, setEnabled] = react.useState(null)
     const [expanded, setExpanded] = react.useState(false)
     const [server, setServer] = react.useState(null)
@@ -438,13 +438,45 @@ window.__ModuleLoader__.load({
     )
   }
 
+  // The card the host renders. 0.1.6-alpha.2 asks a bundle-config entry for
+  // `view: 'page'` only; the legacy keyed settings slot passes no view at all.
+  function TavilyCard(props) {
+    if (props && props.view === 'summary') return react.createElement(TavilySummary, null)
+    return react.createElement(TavilySettingsCard, null)
+  }
+
+  // One-liner for the summary view. Deliberately static and cheap: the page
+  // draws the title, the icon, and the crumb itself, and never asks this entry
+  // for anything but `page`.
+  function TavilySummary() {
+    return react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
+      'Rotating Tavily API keys for the advanced search tools. The built-in web_search keeps its native provider and is never replaced.'
+    )
+  }
+
   function apply(ctx) {
+    // 0.1.6-alpha.2 moved plugin configuration off the Settings page and
+    // replaced the keyed `settings.plugin.item` slot with the Plugins page's
+    // `plugins.*` family (`dsh-client-ui-plugin-manager` declares it).
+    // `slots.inject` fires only for a slot the host actually declares, so
+    // injecting both IS the feature detection: exactly one mounts per harness
+    // line, and neither throws on the other. Keep both -- dropping the retired
+    // name silently removes the card from rc.7 through 0.1.6-alpha.1, and
+    // dropping the new one silently removes it from 0.1.6-alpha.2 onward.
+    ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+      name: 'plugins.bundle.config',
+      // Keyed by the bundle's package name. The Plugins page renders this on
+      // the @moguiyu/dsh-tavily bundle page, between its description and rows.
+      key: '@moguiyu/dsh-tavily',
+      id: '@moguiyu/dsh-tavily'
+    }, TavilyCard))
+
     ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
       name: 'settings.plugin.item',
-      // rc.7 plugin management: this card is keyed by the settings namespace
-      // the Host serves (`tavily-search`); the Plugins configuration tab
-      // dispatches it when the namespace is present. The id/order/label props
-      // keep rc.6 list-slot deployments rendering the card as well.
+      // rc.7 through 0.1.6-alpha.1: keyed by the settings namespace the Host
+      // serves (`tavily-search`); the Plugins configuration tab dispatches it
+      // when the namespace is present. The id/order/label props keep rc.6
+      // list-slot deployments rendering the card as well.
       key: 'tavily-search',
       id: 'tavily-search',
       order: 30,
