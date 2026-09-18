@@ -21,21 +21,34 @@ The built-in `web_search` tool is **never replaced**: Tavily is an *addition* to
 
 ## Install
 
-Either of these installs the `dsh-tavily` row (both resolve to the same plugin, but install with `--profile <name>`):
+### From the Plugins page
+
+1. Open **Plugins** in the DSH sidebar and choose **Add plugin**.
+2. Enter the npm package name **`@moguiyu/dsh-tavily`**, or the GitHub address
+   **`https://github.com/moguiyu/dsh-tavily`** for the source. The field also takes a tarball or an
+   absolute local path.
+3. Press **Install**, then **Enable now**. A freshly installed bundle stays switched **off** until
+   you enable it.
+
+The card then renders on the `dsh-tavily` bundle's own page — between its description and its rows.
+
+### From the CLI
+
+The dialog accepts exactly what `dsh plugin add` accepts, so either route works:
 
 ```sh
-# from the repository — always the latest source
-dsh plugin --profile web add github:moguiyu/dsh-tavily
-
 # from the npm release — the stable, marketplace-counted version
 dsh plugin --profile web add @moguiyu/dsh-tavily
+
+# from the repository — always the latest source
+dsh plugin --profile web add github:moguiyu/dsh-tavily
 ```
 
-After refreshing the browser, open the **Plugins** page in the sidebar and select **dsh-tavily**: the card renders on the bundle's own page, between its description and its rows.
+`--profile <name>` picks the profile to install into; both forms resolve to the same plugin.
 
-> **Requirements** — DSH is a development preview (`0.1.x-rc/alpha`). The tools and the key/usage routes work on every supported line, `0.1.0-rc.7` onward. The **card needs `0.1.6-alpha.2` or newer**, where DSH moved plugin configuration from Settings to the Plugins page; on older lines the plugin is fully functional and simply has no card. The npm name is the scoped `@moguiyu/dsh-tavily`, not the similarly-named community `dsh-tavily` provider-swap plugin.
+> **Requirements** — DSH is a development preview (`0.1.x-rc/alpha`). The tools and the key/usage routes work on every supported line, `0.1.0-rc.7` onward. Both the **card** and the **Plugins-page install route** need `0.1.6-alpha.2` or newer, the release that added the Plugins page and moved plugin configuration there; on older lines the plugin is fully functional and installs from the CLI, it simply has no card. The npm name is the scoped `@moguiyu/dsh-tavily`, not the similarly-named community `dsh-tavily` provider-swap plugin.
 
-> **Compatibility** — `0.3.0` is a single self-contained package: the tools, the routes and the card all live in `@moguiyu/dsh-tavily`, which uses only the long-stable `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` seams. There is no version-specific code path left to feature-detect. Peer ranges list one comparator per host tuple (`^0.1.0-rc.7`, `^0.1.1-rc.1`, `^0.1.2-alpha.2`, `^0.1.3-alpha.1`, `^0.1.5-0`, `^0.1.6-0`), because prerelease comparators never cascade — a new host line means a new comparator, not a widened old one.
+> **Compatibility** — `0.3.x` is a single self-contained package: the tools, the routes and the card all live in `@moguiyu/dsh-tavily`, which uses only the long-stable `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` seams. There is no version-specific code path left to feature-detect. Peer ranges list one comparator per host tuple (`^0.1.0-rc.7`, `^0.1.1-rc.1`, `^0.1.2-alpha.2`, `^0.1.3-alpha.1`, `^0.1.5-0`, `^0.1.6-0`), because prerelease comparators never cascade — a new host line means a new comparator, not a widened old one.
 
 ## Packages
 

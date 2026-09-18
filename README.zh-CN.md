@@ -21,21 +21,32 @@
 
 ## 安装
 
-以下任一条命令都会装上 `dsh-tavily` 这一行（解析到同一个插件，注意 `--profile <name>`）：
+### 在 Plugins 页面安装
+
+1. 打开 DSH 侧边栏的 **Plugins（插件）**页面，点击 **Add plugin**。
+2. 填入 npm 包名 **`@moguiyu/dsh-tavily`**，或源码地址
+   **`https://github.com/moguiyu/dsh-tavily`**。该输入框也接受 tarball 与本机绝对路径。
+3. 点击 **Install**，再点击 **Enable now**。刚装好的 bundle 默认是**关闭**的，需要手动启用。
+
+随后卡片会渲染在 `dsh-tavily` 这个 bundle 自己的页面上 —— 位于描述与其行列表之间。
+
+### 用命令行安装
+
+该对话框接受的内容与 `dsh plugin add` 完全一致，两种方式等价：
 
 ```sh
-# 从仓库安装 —— 永远是最新源码
-dsh plugin --profile web add github:moguiyu/dsh-tavily
-
 # 从 npm 安装 —— 稳定版，市场统计以此为准
 dsh plugin --profile web add @moguiyu/dsh-tavily
+
+# 从仓库安装 —— 永远是最新源码
+dsh plugin --profile web add github:moguiyu/dsh-tavily
 ```
 
-刷新浏览器后，打开侧边栏的 **Plugins（插件）**页面并选中 **dsh-tavily**：卡片会渲染在该 bundle 自己的页面上，位于描述与其行列表之间。
+`--profile <name>` 指定安装到哪个 profile；两种写法解析到同一个插件。
 
-> **环境要求** —— DSH 目前是开发者预览版（`0.1.x-rc/alpha`）。工具与 Key/用量路由在 `0.1.0-rc.7` 起的每一行都可用。**卡片需要 `0.1.6-alpha.2` 或更新版本** —— 该版本把插件配置从 Settings 移到了 Plugins 页面；更早的版本上插件功能完整，只是没有卡片。npm 包名是带 scope 的 `@moguiyu/dsh-tavily`，不是同名的社区 `dsh-tavily` provider 替换插件。
+> **环境要求** —— DSH 目前是开发者预览版（`0.1.x-rc/alpha`）。工具与 Key/用量路由在 `0.1.0-rc.7` 起的每一行都可用。**卡片与 Plugins 页面的安装入口都需要 `0.1.6-alpha.2` 或更新版本** —— 该版本新增了 Plugins 页面并把插件配置移到那里；更早的版本上插件功能完整、可用命令行安装，只是没有卡片。npm 包名是带 scope 的 `@moguiyu/dsh-tavily`，不是同名的社区 `dsh-tavily` provider 替换插件。
 
-> **兼容性** —— `0.3.0` 是单一自包含包：工具、路由与卡片都在 `@moguiyu/dsh-tavily` 内，只使用长期稳定的 `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` 接缝，不再有任何按版本特性探测的代码路径。peer 范围按宿主元组逐条列出（`^0.1.0-rc.7`、`^0.1.1-rc.1`、`^0.1.2-alpha.2`、`^0.1.3-alpha.1`、`^0.1.5-0`、`^0.1.6-0`），因为预发布比较符不会级联 —— 新的宿主版本线要新增比较符，而不是放宽旧的。
+> **兼容性** —— `0.3.x` 是单一自包含包：工具、路由与卡片都在 `@moguiyu/dsh-tavily` 内，只使用长期稳定的 `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` 接缝，不再有任何按版本特性探测的代码路径。peer 范围按宿主元组逐条列出（`^0.1.0-rc.7`、`^0.1.1-rc.1`、`^0.1.2-alpha.2`、`^0.1.3-alpha.1`、`^0.1.5-0`、`^0.1.6-0`），因为预发布比较符不会级联 —— 新的宿主版本线要新增比较符，而不是放宽旧的。
 
 ## 包结构
 
