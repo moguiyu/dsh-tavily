@@ -12,7 +12,7 @@
     "build": "pnpm -r build"
   },
   "dependencies": {
-    "@moguiyu/dsh-tavily": "^0.2.0"
+    "@moguiyu/dsh-tavily": "^0.3.0"
   },
   "dsh": {
     "bundle": {
