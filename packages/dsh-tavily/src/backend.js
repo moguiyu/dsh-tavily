@@ -98,25 +98,72 @@ async function fetchUsageFor(key) {
   return details.usage !== null ? details.usage : details.planUsage
 }
 
+/** Resolve one credential ref to its string value, or `null` when absent. */
+async function resolveRef(credentials, ref) {
+  try {
+    const hit = await credentials.resolve(ref)
+    return hit !== undefined && hit !== null && typeof hit.value === 'string' ? hit.value : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether a ref can be written here. The launching environment's variables are
+ * inherited READ-ONLY: `set`/`unset` throw for them (`describe().writable === false`).
+ * Assume writable when the service cannot say.
+ */
+async function refWritable(credentials, ref) {
+  try {
+    const info = await credentials.describe(ref)
+    return info === undefined || info === null || info.writable !== false
+  } catch {
+    return true
+  }
+}
+
+/**
+ * The managed key list, and where it came from.
+ *
+ * `TAVILY_API_KEYS` is AUTHORITATIVE. `TAVILY_API_KEY` — the derived primary — is
+ * read only as a fallback, for a deployment that sets nothing else. The two used to
+ * be unioned, and that was a bug with two faces: an environment-supplied
+ * `TAVILY_API_KEY` re-added its key on every read, so that key could never be deleted
+ * from the card; and every write then tried to re-sync the primary, which the
+ * launching environment owns, so the write threw AFTER the list had already changed.
+ */
 async function collectStoredKeys(credentials) {
+  const fromList = parseKeyList(await resolveRef(credentials, 'TAVILY_API_KEYS') ?? '')
+  if (fromList.length > 0) return { values: dedupe([...fromList]), source: 'list' }
+  const fromPrimary = parseKeyList(await resolveRef(credentials, 'TAVILY_API_KEY') ?? '')
+  return { values: dedupe([...fromPrimary]), source: fromPrimary.length > 0 ? 'primary' : 'list' }
+}
+
+function dedupe(values) {
   const out = []
   const seen = new Set()
-  for (const ref of REFS) {
-    let hit
-    try {
-      hit = await credentials.resolve(ref)
-    } catch {
-      continue
-    }
-    if (hit === undefined || typeof hit.value !== 'string') continue
-    for (const key of parseKeyList(hit.value)) {
-      if (!seen.has(key)) {
-        seen.add(key)
-        out.push(key)
-      }
+  for (const key of values) {
+    if (!seen.has(key)) {
+      seen.add(key)
+      out.push(key)
     }
   }
   return out
+}
+
+/**
+ * Keep the derived primary in step with the list, best effort. The tools read
+ * `TAVILY_API_KEYS`, so a primary the environment owns must never fail the request.
+ */
+async function syncPrimary(credentials, value) {
+  if (!(await refWritable(credentials, 'TAVILY_API_KEY'))) return false
+  try {
+    if (value === null) await credentials.unset('TAVILY_API_KEY')
+    else await credentials.set('TAVILY_API_KEY', value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -135,7 +182,7 @@ export function installBackend(ctx) {
   }
 
   // ── key manager payload ────────────────────────────────────────────────────
-  async function buildManagerPayload(keys) {
+  async function buildManagerPayload(keys, source = 'list') {
     const state = readState(MANAGER_STATE)
     const keySavedAt = state.keySavedAt !== undefined && typeof state.keySavedAt === 'object' ? state.keySavedAt : {}
     if (Object.keys(keySavedAt).length === 0 && credentials !== undefined) {
@@ -168,13 +215,22 @@ export function installBackend(ctx) {
       if (b.savedAt === null) return -1
       return a.savedAt < b.savedAt ? -1 : 1
     })
+    // The card needs to know what it may change. A ref inherited from the
+    // launching environment is read-only, and saying so beats a raw 500 from
+    // `set` after the list has already been written.
+    const keysWritable = credentials === undefined ? true : await refWritable(credentials, 'TAVILY_API_KEYS')
+    const primaryWritable = credentials === undefined ? true : await refWritable(credentials, 'TAVILY_API_KEY')
+    const removable = source === 'list' ? keysWritable : primaryWritable
     return {
       keys: display.map((entry) => ({
         masked: entry.masked,
         savedAt: entry.savedAt,
         primary: entry.masked === primaryMasked,
+        removable,
       })),
       strategy: isValidStrategy(state.strategy) ? state.strategy : 'rotate',
+      source,
+      writable: { keys: keysWritable, primary: primaryWritable },
     }
   }
 
@@ -184,7 +240,7 @@ export function installBackend(ctx) {
     handler: async (_req, res) => {
       if (credentials === undefined) return send(res, 500, { ok: false, error: 'credentials service unavailable' })
       try {
-        const keys = await collectStoredKeys(credentials)
+        const { values: keys } = await collectStoredKeys(credentials)
         if (keys.length === 0) return send(res, 200, { ok: false, error: 'no Tavily API key configured' })
         const state = readState(MANAGER_STATE)
         const keySavedAt = state.keySavedAt !== undefined && typeof state.keySavedAt === 'object' ? state.keySavedAt : {}
@@ -234,13 +290,13 @@ export function installBackend(ctx) {
         const url = new URL(req.url || '/', 'http://x')
         if (req.method === 'GET') {
           const reveal = url.searchParams.get('reveal')
-          const keys = await collectStoredKeys(credentials)
+          const { values: keys, source } = await collectStoredKeys(credentials)
           if (reveal !== null) {
             const match = keys.find((key) => maskValue(key) === reveal)
             if (match === undefined) return send(res, 404, { ok: false, error: 'key not found' })
             return send(res, 200, { ok: true, value: match })
           }
-          return send(res, 200, { ok: true, ...(await buildManagerPayload(keys)) })
+          return send(res, 200, { ok: true, ...(await buildManagerPayload(keys, source)) })
         }
         if (req.method === 'POST') {
           const body = await readBody(req)
@@ -252,7 +308,7 @@ export function installBackend(ctx) {
             ? body.remove.filter((item) => typeof item === 'string' && item.length > 0)
             : []
 
-          let stored = await collectStoredKeys(credentials)
+          let { values: stored, source } = await collectStoredKeys(credentials)
           if (removeMasked.length > 0) {
             stored = stored.filter((key) => !removeMasked.includes(maskValue(key)))
           }
@@ -260,9 +316,32 @@ export function installBackend(ctx) {
           for (const value of addValues) {
             if (!values.includes(value)) values.push(value)
           }
+
+          // A ref the launching environment supplies is inherited READ-ONLY: set and
+          // unset throw for it. Decide that BEFORE writing anything. The old order
+          // wrote `TAVILY_API_KEYS` first and then threw on the derived-primary sync,
+          // so the card reported a failure for a write that had half happened — and
+          // the unioned read then put the deleted key straight back.
+          const canWriteList = await refWritable(credentials, 'TAVILY_API_KEYS')
+          const canWritePrimary = await refWritable(credentials, 'TAVILY_API_KEY')
+          const READONLY_LIST = 'TAVILY_API_KEYS is supplied read-only by the launching environment, so the key list cannot be changed here. Unset it in the shell you start dsh from, or manage keys in ~/.dsh/.credentials.yaml.'
+          const READONLY_PRIMARY = 'That key comes from TAVILY_API_KEY, which the launching environment supplies read-only. Unset it in the shell you start dsh from.'
+          if (!canWriteList && (addValues.length > 0 || removeMasked.length > 0)) {
+            return send(res, 409, { ok: false, error: READONLY_LIST })
+          }
+          if (!canWritePrimary && source === 'primary' && removeMasked.length > 0) {
+            return send(res, 409, { ok: false, error: READONLY_PRIMARY })
+          }
+          // Emptying the list while an inherited primary still carries a key would
+          // read straight back as that key, so refuse rather than appear to undo itself.
+          if (values.length === 0 && !canWritePrimary) {
+            const inherited = parseKeyList(await resolveRef(credentials, 'TAVILY_API_KEY') ?? '')
+            if (inherited.length > 0) return send(res, 409, { ok: false, error: READONLY_PRIMARY })
+          }
+
           if (values.length === 0) {
             await credentials.unset('TAVILY_API_KEYS')
-            await credentials.unset('TAVILY_API_KEY')
+            await syncPrimary(credentials, null)
           } else {
             if (strategy !== 'rotate') {
               const usageRows = await Promise.all(values.map(async (value) => ({ value, usage: await fetchUsageFor(value) })))
@@ -273,7 +352,7 @@ export function installBackend(ctx) {
               values = orderKeys(values, strategy, usageOf)
             }
             await credentials.set('TAVILY_API_KEYS', values.join(','))
-            await credentials.set('TAVILY_API_KEY', values[0])
+            await syncPrimary(credentials, values[0])
           }
 
           const state = readState(MANAGER_STATE)
@@ -285,7 +364,7 @@ export function installBackend(ctx) {
           }
           writeState(MANAGER_STATE, { keySavedAt, strategy })
 
-          return send(res, 200, { ok: true, ...(await buildManagerPayload(values)) })
+          return send(res, 200, { ok: true, ...(await buildManagerPayload(values, source)) })
         }
         return send(res, 405, { ok: false, error: 'method not allowed' })
       } catch (error) {

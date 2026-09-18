@@ -249,6 +249,10 @@ window.__ModuleLoader__.load({
               react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
                 'All keys are listed below; the green dot marks the first (primary) key. The tavily_search tool uses all keys according to the strategy. Built-in web_search is unaffected.'
               ),
+              server !== null && server.writable !== undefined && server.writable.keys === false &&
+                react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
+                  'Read-only: these keys come from the environment that launched dsh, so this card cannot change them. Unset TAVILY_API_KEYS / TAVILY_API_KEY in that shell and restart dsh to manage keys here.'
+                ),
               loadError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(loadError)),
               react.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
                 react.createElement('thead', null,
@@ -304,11 +308,15 @@ window.__ModuleLoader__.load({
                               !isRemoved && react.createElement(IconButton, { icon: 'pencil', title: 'Edit', onClick: () => startReplace(masked), disabled: busy }),
                               react.createElement(IconButton, {
                                 icon: isRemoved ? 'restore' : (confirm[masked] === true ? 'check' : 'trash'),
-                                title: isRemoved ? 'Restore' : (confirm[masked] === true ? 'Click again to confirm' : 'Delete'),
+                                // A key the launching environment supplies is read-only, so the
+                                // server would refuse. Say so on the control instead.
+                                title: key.removable === false
+                                  ? 'Read-only: this key comes from the environment that launched dsh. Unset it there and restart dsh to change it here.'
+                                  : (isRemoved ? 'Restore' : (confirm[masked] === true ? 'Click again to confirm' : 'Delete')),
                                 danger: !isRemoved,
                                 className: isRemoved ? 'dts-icon-btn' : 'dts-icon-btn dts-icon-btn-danger',
                                 onClick: () => isRemoved ? restore(masked) : markRemoved(masked),
-                                disabled: busy
+                                disabled: busy || (key.removable === false && !isRemoved)
                               })
                             )
                       )

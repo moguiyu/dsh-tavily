@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Advanced Tavily model tools for DeepSeek Harness (tavily_search, tavily_extract, tavily_map, tavily_crawl) with a key and usage management card on the Plugins page. The built-in web_search is never replaced.",
   "type": "module",
   "main": "./src/index.js",
