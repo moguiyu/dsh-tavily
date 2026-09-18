@@ -1,51 +1,23 @@
 /**
- * `@moguiyu/dsh-tool-tavily-search` host half: the advanced `tavily_search`
- * model tool plus the extra Tavily direct tools (`tavily_extract`,
- * `tavily_map`, `tavily_crawl`). Keys resolve from the `TAVILY_API_KEYS`
- * credential per call; rotation is round-robin with failover on 401/429.
+ * Tool half of `@moguiyu/dsh-tavily`: the advanced `tavily_search` model tool
+ * plus the extra Tavily direct tools (`tavily_extract`, `tavily_map`,
+ * `tavily_crawl`). Keys resolve from the `TAVILY_API_KEYS` credential per
+ * call; rotation is round-robin with failover on 401/429.
  *
- * These tools are OPT-IN and default to off. They are independent of the
- * built-in `web_search` provider: enabling them never changes
- * `web.searchProvider` and never registers a web search provider. The
- * settings card persists the choice in `~/.dsh/tavily-tool.json`; the
- * backend package hot-restarts this row after a toggle.
+ * The tools are an OPTION for search, never a replacement: they are
+ * independent of the built-in `web_search` provider, and registering them
+ * touches `web.searchProvider` not at all.
+ *
+ * There is deliberately NO tool-level on/off switch. The plugin is either
+ * composed or not, and the Plugins page's own toggle is the only on/off.
+ * A tool-level switch needs the tool half to be disposable and re-installable
+ * at runtime across two packages, and that contract is what broke twice
+ * (0.1.6 row restart, then the 0.2.x dependency-range skew). Removing the
+ * capability removes the failure mode; see `docs/agents/verification.md`.
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
-export const name = 'tool-tavily-search'
-
-export const inject = ['tools', 'credentials', 'systemPrompt']
-
-export const Config = z.object({
-  enabled: z.boolean().default(false),
-})
-
 const TAVILY_BASE_URL = 'https://api.tavily.com'
-const TOOL_STATE = 'tavily-tool.json'
-const LEGACY_TOGGLE_STATE = 'tavily-toggle.json'
-
-/** Read the persisted advanced-tool switch; `null` when absent or unreadable. */
-export function readToolState() {
-  for (const file of [TOOL_STATE, LEGACY_TOGGLE_STATE]) {
-    try {
-      const parsed = JSON.parse(readFileSync(join(resolveDshHome(), file), 'utf8'))
-      if (parsed !== null && typeof parsed === 'object' && typeof parsed.enabled === 'boolean') return parsed
-    } catch {
-      /* fall through to the next source */
-    }
-  }
-  return null
-}
-
-/** The persisted switch wins; otherwise the plugin config decides. */
-export function isToolEnabled(config, state = readToolState()) {
-  if (state !== null) return state.enabled
-  return config.enabled !== false
-}
 
 /** Clamp a number into [min, max]; `fallback` when not finite. */
 export function clampInt(value, min, max, fallback) {
@@ -450,10 +422,8 @@ const NAVIGATION_PARAMETERS = {
 
 /**
  * Register the `tavily_search`, `tavily_extract`, `tavily_map`, and
- * `tavily_crawl` model tools on `ctx`. Call only when the tool set is
- * enabled — `apply` guards with {@link isToolEnabled}. Shared with the
- * combined `@moguiyu/dsh-tavily` package so the implementation lives in
- * exactly one place.
+ * `tavily_crawl` model tools on `ctx`, and return one disposer that
+ * unregisters all of them plus the two prompt sections.
  *
  * No web search provider is registered here: `web_search` keeps its native
  * provider and `ctx.web` is never touched.
@@ -461,11 +431,9 @@ const NAVIGATION_PARAMETERS = {
 export function installTavilyTool(ctx) {
   let rotation = 0
 
-  // Every registration below is collected so the composing row can turn this
-  // half off and on at runtime. Without this, changing the registered tool set
-  // meant restarting the composing row — which on 0.1.6 re-mounts the fiber
-  // into a scope the agent does not see, leaving the tools registered nowhere
-  // (see AGENTS.md §9 gate 5).
+  // Every registration is collected into one disposer so the fiber tears the
+  // half down cleanly: on row unload, and on the Plugins page's runtime unload
+  // of the bundle (0.1.6-alpha.2 unloads without restarting anything).
   const disposers = []
   const tools = {
     register: (definition) => { disposers.push(ctx.tools.register(definition)) },
@@ -661,30 +629,4 @@ export function installTavilyTool(ctx) {
   }
 }
 
-export function apply(ctx, config) {
-  let disposeTools = null
 
-  function setTools(enabled) {
-    if (enabled) {
-      if (disposeTools === null) disposeTools = installTavilyTool(ctx)
-      return
-    }
-    if (disposeTools !== null) {
-      const dispose = disposeTools
-      disposeTools = null
-      dispose()
-    }
-  }
-
-  setTools(isToolEnabled(config))
-  ctx.effect(() => () => { setTools(false) })
-
-  // A companion row (the standalone backend) flips this half through here
-  // rather than restarting this row — a restart on 0.1.6 re-mounts the fiber
-  // into a scope the agent does not see (see AGENTS.md §9 gate 5). With no
-  // companion, the fiber teardown above is the only lifecycle event.
-  ctx.provide('tavilyTools', {
-    get enabled() { return disposeTools !== null },
-    set(enabled) { setTools(enabled !== false) },
-  })
-}

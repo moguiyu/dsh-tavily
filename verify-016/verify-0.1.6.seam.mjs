@@ -4,24 +4,30 @@
  * the published / installed @moguiyu/dsh-tavily from
  * ~/.dsh/profiles/web/node_modules.
  *
- * Setup (one-time, the symlink dir is git-ignored):
+ * Setup (one-time, the symlink dir is git-ignored). The plugin link must point
+ * at the WORKING TREE, not at node_modules/@moguiyu: pnpm can relink that entry
+ * to a published store copy, and this script would then silently verify a
+ * released version instead of the sources under edit.
  *   mkdir -p verify-016/node_modules
  *   ln -sfn "$HOME/.dsh/profiles/node_modules/@deepseek-ai" verify-016/node_modules/@deepseek-ai
- *   ln -sfn "$HOME/.dsh/profiles/web/node_modules/@moguiyu" verify-016/node_modules/@moguiyu
+ *   mkdir -p verify-016/node_modules/@moguiyu
+ *   ln -sfn "$PWD/packages/dsh-tavily" verify-016/node_modules/@moguiyu/dsh-tavily
  *   node verify-016/verify-0.1.6.seam.mjs
  *
- * Boots the real SettingsProvider / ToolRuntime / SystemPrompt of the running
- * harness line, then checks the §8 gates that are checkable without a browser:
- * which settings seam the plugin feature-detects, that describe() serves the
- * namespace, that a real settings.update drives the switch pipeline (state
- * file), and that tavily_search is registered on the real tool runtime while
- * web_search is never involved.
+ * Boots the real ToolRuntime / SystemPrompt / webServer of the running harness
+ * line, then checks the gates that are checkable without a browser: the four
+ * Tavily tools register on the real tool runtime, `web_search` is never
+ * involved, and the plugin injects neither the web seam nor the loader seam.
  *
- * Every label reports the harness version *actually resolved*, so this script
- * cannot claim to have verified a line it did not run against. The peer-range
- * check asserts this repo's declared ranges accept that same version — the
- * pre-publish metadata gate that silently drifted when 0.1.6 shipped (§4).
- */
+ * The loader seam matters: it existed only so the switch could restart the
+ * composing row, which on 0.1.6 re-mounted the fiber into a scope the agent
+ * does not see. The plugin no longer injects it at all, and this script
+ * asserts nothing ever resolves through it.
+ *
+ * It also asserts the REMOVALS, because a silent re-introduction is the failure
+ * mode here: no `tavily-search` settings namespace, and no `/api/tavily-tool`
+ * or `/api/tavily-toggle` route.
+ * */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -119,62 +125,57 @@ const results = []
 const check = (name, fn) => { fn(); results.push('ok - ' + name) }
 
 const settings = ctx.get('settings')
-check('settings service attached (real ' + HARNESS + ' provider)', () => assert.ok(settings))
-
-const descriptors = settings.describe()
-const ns = descriptors.find((d) => d.ns === 'tavily-search')
-check('describe() serves the tavily-search namespace', () => assert.ok(ns, JSON.stringify(descriptors.map((d) => d.ns))))
-check('row config is the composition base layer', () => assert.deepEqual(ns.base, { enabled: true }))
-check("applies resolved to 'live' (the documented installSection line)", () => assert.equal(ns.applies, 'live'))
-console.log('   -> seam selection: installSection=' + typeof settings.installSection +
-  ', register=' + typeof settings.register + ', applies=' + ns.applies)
-
 const tools = ctx.get('tools')
-check('tavily_search registered on the real ' + HARNESS + ' tool runtime', () => assert.ok(tools.get('tavily_search')))
+const TOOL_NAMES = ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl']
+
+check('all four Tavily tools registered on the real ' + HARNESS + ' tool runtime', () => {
+  for (const n of TOOL_NAMES) assert.ok(tools.get(n), n)
+})
 check('web_search is never registered or replaced here', () => assert.equal(tools.get('web_search'), undefined))
 check('the plugin does not inject the web seam', () => assert.ok(!combined.inject.includes('web')))
+check('the plugin does not inject the loader seam (no row restart is possible)', () =>
+  assert.ok(!combined.inject.includes('loader'), 'loader existed only for the removed row restart'))
 
-// Metadata gate (§4, §9 gate 6): the repo's declared peer ranges must accept the
-// very harness we just booted. A new host tuple does NOT cascade through
-// prerelease comparators, so this fails loudly the moment a line ships
-// undeclared — which is exactly what happened when 0.1.6 landed.
+// REMOVAL GATES. The switch owned a settings namespace; both are gone, and a
+// silent re-introduction would revive a contract the tool half can no longer
+// honour. These fail loudly if either comes back.
+check('the plugin registers no settings namespace', () => {
+  const descriptors = settings.describe()
+  assert.equal(descriptors.find((d) => d.ns === 'tavily-search'), undefined,
+    'the tavily-search namespace belonged to the removed switch')
+})
+
+// Metadata gate (§4): the repo's declared peer ranges must accept the very
+// harness we just booted. A new host tuple does NOT cascade through prerelease
+// comparators, so this fails the moment a line ships undeclared — which is
+// exactly what happened when 0.1.6 landed.
 const harnessRequire = createRequire(join(process.env.HOME, '.dsh/profiles/node_modules/@deepseek-ai/dsh-settings/package.json'))
 const semver = harnessRequire('semver')
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 check('repo peer ranges accept the running ' + HARNESS, () => {
-  for (const dir of ['packages/dsh-tavily', 'packages/dsh-tavily-backend', 'packages/dsh-tool-tavily-search']) {
-    const pkg = JSON.parse(readFileSync(join(repoRoot, dir, 'package.json'), 'utf8'))
-    for (const [dep, range] of Object.entries(pkg.peerDependencies ?? {})) {
-      if (dep === '@deepseek-ai/cordis') continue
-      const running = harnessVersions[dep]
-      assert.ok(running, 'no resolved version for ' + dep)
-      assert.ok(semver.satisfies(running, range), pkg.name + ': ' + dep + '@' + running + ' does not satisfy "' + range + '"')
-    }
+  const pkg = JSON.parse(readFileSync(join(repoRoot, 'packages/dsh-tavily', 'package.json'), 'utf8'))
+  for (const [dep, range] of Object.entries(pkg.peerDependencies ?? {})) {
+    if (dep === '@deepseek-ai/cordis') continue
+    const running = harnessVersions[dep]
+    assert.ok(running, 'no resolved version for ' + dep)
+    assert.ok(semver.satisfies(running, range), pkg.name + ': ' + dep + '@' + running + ' does not satisfy "' + range + '"')
   }
 })
 
-check('backend routes registered on the real webServer seam', () => {
-  for (const p of ['/api/tavily-usage', '/api/tavily-manager', '/api/tavily-tool']) assert.ok(routes.has(p), p)
+check('key and usage routes registered on the real webServer seam', () => {
+  for (const p of ['/api/tavily-usage', '/api/tavily-manager']) assert.ok(routes.has(p), p)
 })
-
-await settings.update('tavily-search', { enabled: false })
-await new Promise((r) => setTimeout(r, 30))
-check('settings.update drives the switch pipeline (state file mirrors the namespace)', () => {
-  const stateFile = join(home, 'tavily-tool.json')
-  assert.ok(existsSync(stateFile), stateFile)
-  assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')), { enabled: false })
+check('no tool-switch route exists', () => {
+  for (const p of ['/api/tavily-tool', '/api/tavily-toggle']) assert.equal(routes.has(p), false, p)
 })
-check('the switch unregisters the tools in place', () =>
-  assert.equal(tools.get('tavily_search'), undefined))
-check('the switch did NOT restart the composing row', () =>
-  assert.deepEqual(restartCalls, []))
+check('nothing ever resolved through the loader seam', () => assert.deepEqual(restartCalls, []))
 
-await settings.update('tavily-search', { enabled: true })
-await new Promise((r) => setTimeout(r, 30))
-check('the switch re-registers the tools in place', () =>
-  assert.ok(tools.get('tavily_search')))
-check('the off/on round trip still never restarted the row', () =>
-  assert.deepEqual(restartCalls, []))
+// Unloading the fiber must leave nothing registered — this is the guarantee
+// that replaced the switch (and what the Plugins page's runtime unload uses).
+await fiber.dispose()
+check('unloading the row unregisters every tool', () => {
+  for (const n of TOOL_NAMES) assert.equal(tools.get(n), undefined, n)
+})
 
 console.log(results.join('\n'))
 console.log('live ' + HARNESS + ' seam verification: PASS (' + results.length + ' checks)')

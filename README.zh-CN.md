@@ -4,80 +4,75 @@
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/moguiyu/dsh-tavily--packages-dsh-tavily/) [![推荐 dshfind](https://img.shields.io/badge/%E6%8E%A8%E8%8D%90-dshfind-ffd700?labelColor=555555)](https://dshfind.com/zh/plugins/moguiyu/dsh-tavily?ref=badge)
 
-为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）提供基于 Tavily 的**可选高级搜索工具**——支持**多个 API Key**、**轮换/故障转移**、**实时用量仪表盘**、**直接的 `extract` / `map` / `crawl` 工具**，以及一个接入插件配置页的设置卡片。
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）提供 Tavily 网页搜索：**多 API Key**、**轮换与故障转移**、**实时用量环**、**`extract` / `map` / `crawl` 直连工具**，以及 **Plugins（插件）页面**上的 Key 管理卡片。
 
-内置的 `web_search` 工具**永远不会被替换**：Tavily 是默认搜索之外的*选项*，而不是替代品。本插件不注册任何 web 搜索提供方，也绝不改写 `web.searchProvider`。
+内置的 `web_search` 工具**永不被替换**：Tavily 是原生搜索的*补充*，而不是替代。本插件不注册任何网页搜索 provider，也不会改写 `web.searchProvider`。
 
 <p align="center">
-  <img src="assets/tavily-search.png" alt="Tavily Search 设置卡片：带绿色主 Key 圆点的遮罩 Key 列表、各 Key 用量圆环、策略选择器以及高级工具开关——位于 Settings → Plugins → plugin configuration" width="560" />
+  <img src="assets/tavily-search.png" alt="Tavily 卡片：脱敏 Key 列表、绿色主 Key 圆点、每 Key 用量环与 Key 使用策略选择器" width="560" />
 </p>
 
 ## 亮点
 
-- 🔑 **多 Tavily API Key** — 在 DSH 设置界面中管理扁平化 Key 列表。
-- 🔁 **Key 轮换与故障转移** — 轮询多 Key；遇到 HTTP 401/429 自动切换下一个 Key。
-- 📊 **实时用量仪表盘** — 服务端获取每个 Key 的 Tavily 用量与汇总，不暴露 Key。
-- ⚡ **直接 Tavily 工具** — `tavily_extract` 读取已知 URL 的内容，`tavily_map` 发现站点链接，`tavily_crawl` 抓取整个站点，均使用同一套 Key 轮换。
+- 🔑 **多个 Tavily API Key** —— 在 DSH 界面中维护一份扁平的 Key 列表。
+- 🔁 **Key 轮换与故障转移** —— 轮询使用；遇到 HTTP 401/429 自动换下一个 Key。
+- 📊 **实时用量** —— 每个 Key 的 Tavily 用量与总计，全部服务端获取，Key 不出服务端。
+- ⚡ **Tavily 直连工具** —— `tavily_extract` 读取已知 URL 的完整内容，`tavily_map` 发现站点链接，`tavily_crawl` 抓取整站，共用同一套 Key 轮换。
 
 ## 安装
 
-以下任一条命令都会安装 `dsh-tavily` 行（两者装的是同一个插件，安装时用 `--profile <name>` 指定 profile）：
+以下任一条命令都会装上 `dsh-tavily` 这一行（解析到同一个插件，注意 `--profile <name>`）：
 
 ```sh
-# 从仓库安装 —— 始终是最新源码
+# 从仓库安装 —— 永远是最新源码
 dsh plugin --profile web add github:moguiyu/dsh-tavily
 
-# 从 npm 发布版安装 —— 稳定且计入市场下载量
+# 从 npm 安装 —— 稳定版，市场统计以此为准
 dsh plugin --profile web add @moguiyu/dsh-tavily
 ```
 
-刷新浏览器后，**Tavily Search** 卡片会出现在 **Settings → Plugins → plugin configuration**。只有当 Host 半身确实被组合时卡片才会出现——配置页只按 Host 已提供（served）的命名空间派发对应键的卡片。
+刷新浏览器后，打开侧边栏的 **Plugins（插件）**页面并选中 **dsh-tavily**：卡片会渲染在该 bundle 自己的页面上，位于描述与其行列表之间。
 
-> **要求** — DSH 为开发者预览版（`0.1.x-rc/alpha`）；keyed 插件配置卡片需要 **0.1.0-rc.7 或更新**（含 `0.1.2-alpha.x`、`0.1.3` 版本线、`0.1.5` 版本线，以及截至 `0.1.6-alpha.1` 的 `0.1.6` 版本线）。npm 名为作用域包 `@moguiyu/dsh-tavily`，并非同名社区 `dsh-tavily` 提供方替换插件。
+> **环境要求** —— DSH 目前是开发者预览版（`0.1.x-rc/alpha`）。工具与 Key/用量路由在 `0.1.0-rc.7` 起的每一行都可用。**卡片需要 `0.1.6-alpha.2` 或更新版本** —— 该版本把插件配置从 Settings 移到了 Plugins 页面；更早的版本上插件功能完整，只是没有卡片。npm 包名是带 scope 的 `@moguiyu/dsh-tavily`，不是同名的社区 `dsh-tavily` provider 替换插件。
 
-> **兼容性** — 同一个包覆盖当前所有 host 版本线：DSH `0.1.0-rc.7` – `0.1.1-rc.x` 使用 rc.7/rc.8 settings 通道；DSH `0.1.2-alpha.2+`（覆盖整个 `0.1.3` 版本线以及 `0.1.5`/`0.1.6` 版本线，含 alpha/RC）使用 `installSection` 通道——运行时自动探测，无需额外安装步骤。peer 范围为每个 host 版本元组各列一个比较器（`^0.1.0-rc.7`、`^0.1.1-rc.1`、`^0.1.2-alpha.2`、`^0.1.3-alpha.1`、`^0.1.5-0`、`^0.1.6-0`），因为预发布比较器不会级联——新增一条 host 版本线要新增比较器，而不是放宽旧的。已在 `0.1.0-rc.8`、`0.1.2-alpha.2`、`0.1.3-alpha.2`、`0.1.5-rc.2`、`0.1.6-alpha.1` 上实测。
+> **兼容性** —— `0.3.0` 是单一自包含包：工具、路由与卡片都在 `@moguiyu/dsh-tavily` 内，只使用长期稳定的 `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` 接缝，不再有任何按版本特性探测的代码路径。peer 范围按宿主元组逐条列出（`^0.1.0-rc.7`、`^0.1.1-rc.1`、`^0.1.2-alpha.2`、`^0.1.3-alpha.1`、`^0.1.5-0`、`^0.1.6-0`），因为预发布比较符不会级联 —— 新的宿主版本线要新增比较符，而不是放宽旧的。
 
-## 包
+## 包结构
+
+**只有一个包。** 早期版本还发布过 `@moguiyu/dsh-tavily-backend` 与 `@moguiyu/dsh-tool-tavily-search`。自 `0.3.0` 起两者都并入 `@moguiyu/dsh-tavily`，该包已完全自包含；两个旧包已弃用，不再更新。
 
 | 包 | 作用 |
 |---|---|
-| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 推荐插件：`tavily_search` + `tavily_extract` / `tavily_map` / `tavily_crawl` 工具 + 设置卡片 + 本地后端 + `tavily-search` 命名空间 |
-| [`@moguiyu/dsh-tavily-backend`](packages/dsh-tavily-backend) | 独立设置后端（Key 管理、用量、工具开关） |
-| [`@moguiyu/dsh-tool-tavily-search`](packages/dsh-tool-tavily-search) | 独立高级 Tavily 工具 — `tavily_search`、`tavily_extract`、`tavily_map`、`tavily_crawl`（无界面） |
+| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 全部功能：`tavily_search` + `tavily_extract` / `tavily_map` / `tavily_crawl`、Key/用量路由，以及 Plugins 页面上的卡片 |
 
 ## 凭据
 
-- `TAVILY_API_KEYS` — 逗号分隔 Key 列表；`tavily_search` 轮换使用，遇到 HTTP 401/429 自动重试。
-- `TAVILY_API_KEY` — 自动同步为首个 Key 的主 Key。
+- `TAVILY_API_KEYS` —— 逗号分隔的 Key 列表；工具按它轮换，遇到 HTTP 401/429 自动重试。
+- `TAVILY_API_KEY` —— 主 Key，会自动同步为列表中的第一个 Key。
 
-两者都由设置卡片自动管理。Key 不会以明文离开服务器，任何状态文件都不保存密钥。
+两者均由卡片自动维护。Key 离开服务端时始终脱敏，任何状态文件都不保存 Key 内容。
 
-## Key 用量策略
+## Key 使用策略
 
-- **轮流使用每个 Key** — 轮询；遇到 401/429 自动尝试下一个。
-- **按用量最少优先 / 用量最多优先** — 保存时按 Tavily 实时用量重新排序。
+- **轮流使用** —— 轮询；遇到 401/429 就换下一个 Key。
+- **用量最少优先 / 用量最多优先** —— 保存时按 Tavily 实时用量重排 Key。
 
-## 高级 Tavily 工具
+## Tavily 工具
 
-高级模型工具**默认关闭，按需开启**。它们用于直接访问 Tavily 操作，与 `web_search` 相互独立：
+`tavily_search` 以及直连工具，均独立于 `web_search`：
 
-- `tavily_search` — 完整搜索面（`search_depth`、`topic`、`days`、域名过滤、`include_answer`、`include_raw_content`）；
-- `tavily_extract` — 提取已知 HTTP(S) URL 的完整内容；
-- `tavily_map` — 不抓取正文，发现站点的链接；
-- `tavily_crawl` — 抓取站点并返回其各页面的已提取内容。
+- `tavily_search` —— 完整搜索能力（`search_depth`、`topic`、`days`、域名过滤、`include_answer`、`include_raw_content`）；
+- `tavily_extract` —— 抓取已知 HTTP(S) URL 的完整内容；
+- `tavily_map` —— 只发现站点链接，不抓取页面内容；
+- `tavily_crawl` —— 抓取整站并返回各页面提取内容。
 
-- 开启它们不会改变默认的 `web_search`（内置 DeepSeek 提供方及其原生 schema 保持不变）；
-- 关闭它们只会注销额外的 Tavily 工具。
-
-开关保存在 `tavily-search` 设置命名空间（settings.yaml）中，并镜像到 `~/.dsh/tavily-tool.json`，保证每次重启读到相同值。
+compose 该插件即注册这些工具，没有单独的工具开关。若要关闭，请用其 Plugins 页面上的开关停用整个插件 —— 无论开关如何，内置 `web_search` 都保留自己的 provider，其 schema 也不会被改动。
 
 ## 状态文件
 
-- `~/.dsh/tavily-manager.json` — Key 保存日期 + 策略
-- `~/.dsh/tavily-tool.json` — 高级工具 `{ "enabled": boolean }`（设置命名空间的镜像）
-- `~/.dsh/tavily-toggle.json` — 旧版工具状态，仅用于迁移读取
+- `~/.dsh/tavily-manager.json` —— Key 保存日期 + 策略
 
-权限 `600`，不保存密钥。
+权限 `600`，不保存任何密钥。
 
 ## 开发
 

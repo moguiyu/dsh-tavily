@@ -1,56 +1,24 @@
 /**
- * `@moguiyu/dsh-tavily-backend`: one row registering the Tavily settings
- * routes on the harness webServer. It owns key/usage management and the
- * opt-in switch for the advanced `tavily_search` model tool. The built-in
- * `web_search` tool is never replaced — no web search provider is registered
- * and `web.searchProvider` is never touched.
+ * Routes half of `@moguiyu/dsh-tavily`: key and usage management on the
+ * harness webServer (`/api/tavily-usage`, `/api/tavily-manager`). The
+ * built-in `web_search` tool is never replaced — no web search provider is
+ * registered and `web.searchProvider` is never touched.
  *
- * The combined `@moguiyu/dsh-tavily` package composes this same backend
- * through {@link installBackend}, supplying a settings-namespace-aware
- * switch instead of the standalone state-file pipeline.
+ * There is no `/api/tavily-tool` switch route: the tool-level on/off is gone
+ * (see `tools.js`). Key management is not a capability gate — it only edits
+ * the credentials the tools read.
  */
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
-
-export const name = 'tavily-backend'
-
-export const inject = ['webServer', 'credentials', 'loader']
 
 const USAGE_TTL_MS = 60000
 const usageCache = new Map()
 
 const MANAGER_STATE = 'tavily-manager.json'
-const TOOL_STATE = 'tavily-tool.json'
-const LEGACY_TOGGLE_STATE = 'tavily-toggle.json'
 const LEGACY_STATE = 'tavily-settings.json'
 const REFS = ['TAVILY_API_KEYS', 'TAVILY_API_KEY']
-const TOOL_ROW = 'include:tool-tavily-search'
-
-export function readToolState() {
-  for (const file of [TOOL_STATE, LEGACY_TOGGLE_STATE]) {
-    const state = readState(file)
-    if (state !== null && typeof state === 'object' && typeof state.enabled === 'boolean') return state
-  }
-  return null
-}
-
-export function readToolEnabled() {
-  const state = readToolState()
-  return state === null ? false : state.enabled
-}
-
-/** Persist the advanced-tool switch (shared with the combined package). */
-export function writeToolState(enabled) {
-  writeState(TOOL_STATE, { enabled })
-}
-
-/** Restore a previously read switch state; `null` removes the file. */
-export function restoreToolState(state) {
-  if (state !== null) writeToolState(state.enabled)
-  else rmSync(statePath(TOOL_STATE), { force: true })
-}
 
 function statePath(file) {
   return join(resolveDshHome(), file)
@@ -152,20 +120,13 @@ async function collectStoredKeys(credentials) {
 }
 
 /**
- * Register the Tavily settings routes on `ctx.webServer`:
- * `/api/tavily-usage`, `/api/tavily-manager`, `/api/tavily-tool` (+ the
- * backward-compatible `/api/tavily-toggle` alias). The switch is exposed
- * through `hooks` so every consumer routes the toggle through its own
- * persistence pipeline:
+ * Register the Tavily key/usage routes on `ctx.webServer`:
+ * `/api/tavily-usage` and `/api/tavily-manager`.
  *
- * - `hooks.enabled()` — current advanced-tool switch state;
- * - `hooks.applySwitch(enabled)` — persist the choice and (un)register the
- *   tool half. The standalone backend flips the tool row's `tavilyTools`
- *   service in place (falling back to a `include:tool-tavily-search` restart
- *   only for an older tool row); the combined package writes through the
- *   `tavily-search` settings namespace and owns the tool half directly.
+ * Every route is registered through `ctx.effect`, so the calling fiber owns
+ * it and unloading the row leaves nothing registered.
  */
-export function installBackend(ctx, hooks) {
+export function installBackend(ctx) {
   const credentials = ctx.get('credentials')
 
   const send = (res, status, payload) => {
@@ -333,64 +294,4 @@ export function installBackend(ctx, hooks) {
     },
   }), 'tavily-backend: route /api/tavily-manager')
 
-  // ── advanced tool on/off (does NOT touch web.searchProvider) ──────────────
-  const toolToggleHandler = async (req, res) => {
-    try {
-      if (req.method === 'GET') {
-        return send(res, 200, { ok: true, enabled: hooks.enabled() })
-      }
-      if (req.method === 'POST') {
-        const body = await readBody(req)
-        const enabled = body !== null && typeof body === 'object' && body.enabled === true
-        await hooks.applySwitch(enabled)
-        return send(res, 200, { ok: true, enabled })
-      }
-      return send(res, 405, { ok: false, error: 'method not allowed' })
-    } catch (error) {
-      send(res, 500, { ok: false, error: String(error && error.message ? error.message : error) })
-    }
-  }
-
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/tavily-tool', handler: toolToggleHandler }), 'tavily-backend: route /api/tavily-tool')
-  // Backward-compatible alias for cards from before the provider/tool split.
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/tavily-toggle', handler: toolToggleHandler }), 'tavily-backend: route /api/tavily-toggle')
-}
-
-export function apply(ctx) {
-  /**
-   * Flip the tool half. The preferred path is the `tavilyTools` service the tool
-   * row publishes: it registers/disposes in place, so the switch is immediate and
-   * keeps working on 0.1.6. The loader restart below survives only as a fallback
-   * for a tool row too old to publish the service — a restart re-mounts the fiber
-   * into a scope the agent does not see, leaving the tools registered nowhere
-   * (see AGENTS.md §9 gate 5).
-   */
-  async function applyToolEnabled(enabled) {
-    const tools = ctx.get('tavilyTools')
-    if (tools !== undefined && tools !== null && typeof tools.set === 'function') {
-      tools.set(enabled)
-      return
-    }
-    const loader = ctx.get('loader')
-    if (loader === undefined) return
-    const tool = loader.resolve(TOOL_ROW)
-    if (tool === undefined || tool === null || tool.fiber === undefined) return
-    await tool.fiber.update({ enabled }, true)
-  }
-
-  installBackend(ctx, {
-    enabled: () => readToolEnabled(),
-    async applySwitch(enabled) {
-      // Persist first: whichever path runs, the tool half reads this file to
-      // decide whether to register.
-      const previous = readToolState()
-      writeToolState(enabled)
-      try {
-        await applyToolEnabled(enabled)
-      } catch (error) {
-        restoreToolState(previous)
-        throw error
-      }
-    },
-  })
 }

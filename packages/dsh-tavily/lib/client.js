@@ -2,7 +2,6 @@ window.__ModuleLoader__.load({
   id: "@moguiyu/dsh-tavily",
   factory: function factory(require) {
   const react = require('react')
-  const _primitives = require('@deepseek-ai/dsh-client-ui-primitives')
 
   const inject = ['slots']
 
@@ -52,18 +51,6 @@ window.__ModuleLoader__.load({
     }, react.createElement(SvgIcon, { name: icon, size: 13 }))
   }
 
-  function Switch({ checked, disabled, label, onChange }) {
-    return react.createElement('button', {
-      type: 'button',
-      role: 'switch',
-      'aria-checked': checked === true,
-      'aria-label': label,
-      disabled: disabled || checked === null,
-      onClick: onChange,
-      style: { width: 36, height: 20, borderRadius: 10, border: '1px solid var(--dsw-alias-border-l2)', background: checked === true ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-bg-layer-1)', cursor: 'pointer', padding: 0, position: 'relative', flex: 'none', opacity: disabled ? 0.5 : 1 }
-    }, react.createElement('span', { style: { position: 'absolute', top: 2, left: checked === true ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: '#fff', transition: 'left .12s ease' } }))
-  }
-
   function UsageCircle({ percent, size, label, onClick }) {
     const radius = 15
     const circumference = 2 * Math.PI * radius
@@ -79,8 +66,6 @@ window.__ModuleLoader__.load({
   }
 
   function TavilySettingsCard() {
-    const [enabled, setEnabled] = react.useState(null)
-    const [expanded, setExpanded] = react.useState(false)
     const [server, setServer] = react.useState(null)
     const [loadError, setLoadError] = react.useState(null)
     const [strategy, setStrategy] = react.useState('rotate')
@@ -96,13 +81,6 @@ window.__ModuleLoader__.load({
     const [usageError, setUsageError] = react.useState(null)
 
     const refresh = react.useCallback(async () => {
-      try {
-        const response = await fetch('/api/tavily-tool', { cache: 'no-store' })
-        const data = await response.json()
-        if (data.ok) { setEnabled(data.enabled); setLoadError(null) } else { setLoadError(data.error || 'Failed to load settings') }
-      } catch (error) {
-        setLoadError(String(error && error.message ? error.message : error))
-      }
       try {
         const response = await fetch('/api/tavily-manager', { cache: 'no-store' })
         const data = await response.json()
@@ -121,27 +99,6 @@ window.__ModuleLoader__.load({
     }, [])
 
     react.useEffect(() => { refresh() }, [refresh])
-
-    const toggleEnabled = async () => {
-      const next = enabled !== true
-      setBusy(true)
-      setNotice(null)
-      try {
-        const response = await fetch('/api/tavily-tool', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabled: next })
-        })
-        const data = await response.json()
-        if (!data.ok) { setNotice({ error: data.error || 'Switch failed' }); return }
-        setEnabled(data.enabled)
-        setNotice({ ok: data.enabled ? 'Advanced tavily_search tool enabled.' : 'Advanced tavily_search tool disabled — built-in web_search is unchanged.' })
-      } catch (error) {
-        setNotice({ error: String(error && error.message ? error.message : error) })
-      } finally {
-        setBusy(false)
-      }
-    }
 
     const saveStrategy = async (next) => {
       setBusy(true)
@@ -283,46 +240,12 @@ window.__ModuleLoader__.load({
     const headStyle = { textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--dsw-alias-border-l2)', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }
     const cellStyle = { padding: '8px', verticalAlign: 'top' }
 
-    const isOff = enabled === false
-
-    // Card box mirrors the native plugin-config card (PluginCard.module.css,
-    // ui-settings-plugins): bg-layer-3 fill, .5px border-l4, 16px radius,
-    // hover/open border lift, and the open state's bg-layer-2 upgrade — so
-    // the card sits at the same elevation as native cards in dark mode too.
-    return react.createElement('div', { className: expanded ? 'dts-card dts-card-open' : 'dts-card', style: { minWidth: 0 } },
-      react.createElement('style', null, '.dts-card{border:.5px solid var(--dsw-alias-border-l4);border-radius:16px;background:var(--dsw-alias-bg-layer-3);transition:border-color .16s,background .16s}.dts-card:hover{border-color:var(--dsw-alias-label-dimmed)}.dts-card-open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
-      react.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '12px 14px', minHeight: 52, boxSizing: 'border-box' } },
-        react.createElement('button', {
-          type: 'button',
-          'aria-expanded': expanded,
-          onClick: () => setExpanded((current) => !current),
-          style: { flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2, font: 'inherit', color: 'inherit' }
-        },
-          react.createElement('strong', { style: { fontSize: 14, fontWeight: 600, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Tavily Search'),
-          react.createElement('span', { style: { fontSize: 12, lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Advanced tavily_search tool · key rotation · usage')
-        ),
-        react.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, flex: 'none' } },
-          react.createElement(Switch, { checked: enabled, disabled: busy, label: 'Advanced tavily_search tool enabled', onChange: toggleEnabled }),
-          react.createElement('button', {
-            type: 'button',
-            className: 'dts-icon-btn',
-            title: expanded ? 'Collapse' : 'Expand',
-            'aria-label': expanded ? 'Collapse' : 'Expand',
-            onClick: () => setExpanded((current) => !current),
-            style: { width: 26, height: 26, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-tertiary)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }
-          },
-            react.createElement('span', { style: { display: 'inline-flex', transform: expanded ? 'rotate(180deg)' : undefined, transition: 'transform .14s var(--ds-ease-in-out)' } },
-              react.createElement(_primitives.IconChevronDownOutline14, { size: 12, 'aria-hidden': 'true' })
-            )
-          )
-        )
-      ),
-      expanded && react.createElement('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 16 } },
-        isOff
-          ? react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
-              'The advanced tavily_search tool is off. The built-in web_search keeps its native provider and is never replaced.'
-            )
-          : react.createElement(react.Fragment, null,
+    // The Plugins page draws the title, the icon, and the crumb — the
+    // `plugins.bundle.config` contract puts the form alone in the entry — so
+    // this renders no card chrome, no second heading, and no collapse.
+    return react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 } },
+      react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
+      react.createElement(react.Fragment, null,
               react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
                 'All keys are listed below; the green dot marks the first (primary) key. The tavily_search tool uses all keys according to the strategy. Built-in web_search is unaffected.'
               ),
@@ -434,53 +357,33 @@ window.__ModuleLoader__.load({
               usageError !== null && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usageError)),
               usage !== null && usage.ok === false && react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, String(usage.error))
             )
-      )
     )
   }
 
-  // The card the host renders. 0.1.6-alpha.2 asks a bundle-config entry for
-  // `view: 'page'` only; the legacy keyed settings slot passes no view at all.
+  // The entry the Plugins page renders. The contract asks for two views:
+  // `summary` for the one-liner under the title, and `page` for the form with
+  // its own save control. The page supplies the title, icon, and crumb, so the
+  // summary is a plain string and the page view is the form alone — matching
+  // how the shipped cards (WebSearchCard and friends) are written.
   function TavilyCard(props) {
-    if (props && props.view === 'summary') return react.createElement(TavilySummary, null)
+    if (props && props.view === 'summary') {
+      return 'Manage Tavily API keys and the key-usage strategy. The built-in web_search is never replaced.'
+    }
     return react.createElement(TavilySettingsCard, null)
   }
 
-  // One-liner for the summary view. Deliberately static and cheap: the page
-  // draws the title, the icon, and the crumb itself, and never asks this entry
-  // for anything but `page`.
-  function TavilySummary() {
-    return react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },
-      'Rotating Tavily API keys for the advanced search tools. The built-in web_search keeps its native provider and is never replaced.'
-    )
-  }
-
   function apply(ctx) {
-    // 0.1.6-alpha.2 moved plugin configuration off the Settings page and
-    // replaced the keyed `settings.plugin.item` slot with the Plugins page's
-    // `plugins.*` family (`dsh-client-ui-plugin-manager` declares it).
-    // `slots.inject` fires only for a slot the host actually declares, so
-    // injecting both IS the feature detection: exactly one mounts per harness
-    // line, and neither throws on the other. Keep both -- dropping the retired
-    // name silently removes the card from rc.7 through 0.1.6-alpha.1, and
-    // dropping the new one silently removes it from 0.1.6-alpha.2 onward.
+    // ONE slot. 0.1.6-alpha.2 moved plugin configuration to the sidebar
+    // Plugins page and retired `settings.plugin.item`. This package no longer
+    // registers a settings namespace, so the retired keyed slot has no key it
+    // could claim. On rc.7 through 0.1.6-alpha.1 the tools and routes work but
+    // this card has no host — see `docs/agents/plugin-design.md`.
     ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
       name: 'plugins.bundle.config',
       // Keyed by the bundle's package name. The Plugins page renders this on
       // the @moguiyu/dsh-tavily bundle page, between its description and rows.
       key: '@moguiyu/dsh-tavily',
       id: '@moguiyu/dsh-tavily'
-    }, TavilyCard))
-
-    ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-      name: 'settings.plugin.item',
-      // rc.7 through 0.1.6-alpha.1: keyed by the settings namespace the Host
-      // serves (`tavily-search`); the Plugins configuration tab dispatches it
-      // when the namespace is present. The id/order/label props keep rc.6
-      // list-slot deployments rendering the card as well.
-      key: 'tavily-search',
-      id: 'tavily-search',
-      order: 30,
-      label: 'Tavily Search'
     }, TavilyCard))
   }
 

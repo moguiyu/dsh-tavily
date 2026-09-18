@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { installBackend } from '../src/index.js'
+import { installBackend } from '../src/backend.js'
 
 // Hermetic run: every state read/write goes to a throwaway home.
 process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dsh-tavily-route-'))

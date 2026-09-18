@@ -4,14 +4,13 @@ import {
   buildExtractBody,
   buildNavBody,
   clampInt,
-  isToolEnabled,
   normalizeArgs,
   normalizeExtractArgs,
   normalizeNavArgs,
   projectCrawl,
   projectExtract,
   projectMap,
-} from '../src/index.js'
+} from '../src/tools.js'
 
 test('clampInt', () => {
   assert.equal(clampInt(3, 1, 20, 5), 3)
@@ -54,15 +53,6 @@ test('normalizeArgs: domain filters', () => {
   assert.deepEqual(args.excludeDomains, [])
 })
 
-test('isToolEnabled: persisted state wins over plugin config', () => {
-  assert.equal(isToolEnabled({ enabled: true }, { enabled: false }), false)
-  assert.equal(isToolEnabled({ enabled: false }, { enabled: true }), true)
-})
-
-test('isToolEnabled: falls back to plugin config when no state is stored', () => {
-  assert.equal(isToolEnabled({ enabled: true }, null), true)
-  assert.equal(isToolEnabled({ enabled: false }, null), false)
-})
 
 test('normalizeExtractArgs: urls required, absolute http(s), trimmed', () => {
   assert.throws(() => normalizeExtractArgs({}), /at least one URL/)

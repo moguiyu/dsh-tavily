@@ -3,34 +3,32 @@ import { test } from 'node:test'
 
 import { factory } from '../src/client.js'
 
-// The card's slot contract moved in 0.1.6-alpha.2: the keyed
-// `settings.plugin.item` slot was replaced by the Plugins page's `plugins.*`
-// family. `slots.inject` only fires for a slot the host actually declares, so
-// the bundle must inject both — its own module graph is the only place that
-// knows which one exists on the running line. Registering into neither (or
-// only the retired one) makes the card vanish with no error anywhere.
+// The card has exactly ONE home: the Plugins page's keyed
+// `plugins.bundle.config` slot, keyed by the bundle's package name. Two
+// earlier registrations are gone and must not come back:
+//
+// - `settings.plugin.item`, retired by 0.1.6-alpha.2. It was keyed by a
+//   settings namespace this package no longer registers, so re-adding it would
+//   register a card that can never pair with a namespace.
+// - a collapsible, self-titled card. The page draws the title, the icon, and
+//   the crumb; the entry supplies the form.
 
-const noop = () => null
-
-function reactStub() {
-  return {
-    createElement: noop,
-    useState: (initial) => [initial, noop],
+function mount() {
+  const react = {
+    createElement: (type, props, ...children) => ({ type, props, children }),
+    useState: (initial) => [initial, () => {}],
     useCallback: (fn) => fn,
-    useEffect: noop,
+    useEffect: () => {},
     useMemo: (fn) => fn(),
     useRef: () => ({ current: null })
   }
-}
-
-function mount() {
-  const plugin = factory((name) => name === 'react' ? reactStub() : { IconChevronDownOutline14: noop })
+  const plugin = factory((name) => name === 'react' ? react : {})
   const injected = []
   const registered = []
   const ctx = {
     slots: {
       inject: (name, callback) => { injected.push(name); callback() },
-      register: (options) => { registered.push(options); return noop }
+      register: (options, component) => { registered.push({ options, component }); return () => {} }
     }
   }
   plugin.apply(ctx)
@@ -42,36 +40,37 @@ test('the client bundle declares the slots service', () => {
   assert.deepEqual(plugin.inject, ['slots'])
 })
 
-test('the card registers into the 0.1.6-alpha.2 Plugins page slot, keyed by bundle name', () => {
+test('the card registers into the Plugins page bundle-config slot, keyed by bundle name', () => {
   const { injected, registered } = mount()
-  assert.ok(
-    injected.includes('plugins.bundle.config'),
-    'inject plugins.bundle.config: the Plugins page is where a bundle configures itself from 0.1.6-alpha.2'
-  )
-  const entry = registered.find((options) => options.name === 'plugins.bundle.config')
-  assert.ok(entry, 'the card must register into plugins.bundle.config')
-  assert.equal(
-    entry.key,
-    '@moguiyu/dsh-tavily',
-    'plugins.bundle.config is keyed by the bundle package name, not the settings namespace'
-  )
+  assert.deepEqual(injected, ['plugins.bundle.config'], 'the Plugins page is the only host')
+  assert.equal(registered.length, 1)
+  const { options } = registered[0]
+  assert.equal(options.name, 'plugins.bundle.config')
+  assert.equal(options.key, '@moguiyu/dsh-tavily', 'keyed by the bundle package name')
 })
 
-test('the card still registers into the rc.7 through 0.1.6-alpha.1 settings slot', () => {
-  const { registered } = mount()
-  const entry = registered.find((options) => options.name === 'settings.plugin.item')
-  assert.ok(
-    entry,
-    'keep registering settings.plugin.item: dropping it makes the card vanish on rc.7 through 0.1.6-alpha.1'
-  )
-  assert.equal(entry.key, 'tavily-search', 'the legacy keyed slot is keyed by the settings namespace')
-})
-
-test('both slots are injected, so exactly one mounts per harness line', () => {
+test('the retired settings slot is not injected', () => {
   const { injected } = mount()
-  assert.deepEqual(
-    [...injected].sort(),
-    ['plugins.bundle.config', 'settings.plugin.item'],
-    'dual injection is the feature detection; a single name means one harness line loses its card'
+  assert.equal(
+    injected.includes('settings.plugin.item'),
+    false,
+    'settings.plugin.item was retired in 0.1.6-alpha.2 and this package registers no namespace key'
   )
+})
+
+test('the summary view is a one-liner string and the page view is the form', () => {
+  const { registered } = mount()
+  const { component } = registered[0]
+  const summary = component({ view: 'summary' })
+  assert.equal(typeof summary, 'string', 'the page renders the summary under its own title')
+  assert.ok(summary.length > 0)
+  const page = component({ view: 'page' })
+  assert.equal(typeof page, 'object', 'the page view must be the form element')
+  assert.notEqual(page, null)
+})
+
+test('the card renders with no props too (the page view is the default)', () => {
+  const { registered } = mount()
+  const page = registered[0].component(undefined)
+  assert.equal(typeof page, 'object')
 })

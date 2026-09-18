@@ -30,36 +30,11 @@ jobs:
         run: |
           node packages/dsh-tavily/scripts/build-client.mjs
 
-      # Publish dependencies first: the combined package depends on these two.
-      # Each step is idempotent: if the exact version is already on npm it is
-      # skipped, so a partial/retried run (or re-running an existing tag) does
-      # not fail on an already-published version.
-      - name: Publish @moguiyu/dsh-tool-tavily-search
-        run: |
-          PKG=@moguiyu/dsh-tool-tavily-search
-          DIR=./packages/dsh-tool-tavily-search
-          VER=$(node -p "require('$DIR/package.json').version")
-          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
-            echo "::notice::$PKG@$VER already published; skipping"
-          else
-            npm publish $DIR --access public
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @moguiyu/dsh-tavily-backend
-        run: |
-          PKG=@moguiyu/dsh-tavily-backend
-          DIR=./packages/dsh-tavily-backend
-          VER=$(node -p "require('$DIR/package.json').version")
-          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
-            echo "::notice::$PKG@$VER already published; skipping"
-          else
-            npm publish $DIR --access public
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      # ONE package since 0.3.0. The two standalone packages
+      # (@moguiyu/dsh-tool-tavily-search, @moguiyu/dsh-tavily-backend) were
+      # folded into @moguiyu/dsh-tavily: the combined package used to import
+      # them, and their dependency ranges could stay behind the contract, which
+      # is exactly how the tool-level switch broke. Nothing to order any more.
       - name: Publish @moguiyu/dsh-tavily
         run: |
           PKG=@moguiyu/dsh-tavily

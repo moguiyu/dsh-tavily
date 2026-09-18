@@ -1,73 +1,97 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { clampInt, isToolEnabled, normalizeArgs } from '@moguiyu/dsh-tool-tavily-search'
-import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from '@moguiyu/dsh-tavily-backend/lib'
-import { TAVILY_NS } from '../src/index.js'
 
-test('clampInt', () => {
-  assert.equal(clampInt(3, 1, 20, 5), 3)
-  assert.equal(clampInt(0, 1, 20, 5), 1)
-  assert.equal(clampInt(99, 1, 20, 5), 20)
-  assert.equal(clampInt(undefined, 1, 20, 5), 5)
-  assert.equal(clampInt('abc', 1, 20, 5), 5)
-  assert.equal(clampInt(2.6, 1, 20, 5), 3)
+import { apply, inject, name } from '../src/index.js'
+
+// The combined package is now the ONLY package, so this suite guards the
+// composition rather than any switch. Two designs were removed here on
+// purpose and must not come back: the tool-level on/off switch and the
+// composing-row restart it needed. See `docs/agents/verification.md`.
+
+function bench() {
+  const tools = []
+  const sections = []
+  const routes = new Map()
+  const teardowns = []
+
+  const credentials = {
+    async resolve() { return undefined },
+    async set() {},
+    async describe() { return { configured: false } }
+  }
+  const systemPrompt = {
+    section(value) {
+      sections.push(value)
+      return () => { const i = sections.indexOf(value); if (i >= 0) sections.splice(i, 1) }
+    }
+  }
+
+  const ctx = {
+    logger: { info() {}, warn() {}, error() {} },
+    tools: {
+      register(definition) {
+        tools.push(definition)
+        return () => { const i = tools.indexOf(definition); if (i >= 0) tools.splice(i, 1) }
+      }
+    },
+    systemPrompt,
+    credentials,
+    webServer: {
+      register(route) {
+        routes.set(route.path, route.handler)
+        return () => routes.delete(route.path)
+      }
+    },
+    get(key) { return key === 'credentials' ? credentials : key === 'systemPrompt' ? systemPrompt : undefined },
+    effect(callback) { teardowns.push(callback()) }
+  }
+
+  apply(ctx)
+  return { tools, sections, routes, teardowns }
+}
+
+test('the plugin declares exactly the services it consumes', () => {
+  assert.equal(name, 'dsh-tavily')
+  assert.deepEqual(inject, ['tools', 'webServer', 'credentials', 'systemPrompt'])
+  // `loader` must stay out: it existed only for the row restart.
+  assert.equal(inject.includes('loader'), false, 'the loader seam is for the removed row restart')
 })
 
-test('normalizeArgs: query is required and trimmed', () => {
-  assert.throws(() => normalizeArgs({}), /non-empty string/)
-  assert.throws(() => normalizeArgs({ query: '   ' }), /non-empty string/)
-  assert.equal(normalizeArgs({ query: '  hello  ' }).query, 'hello')
+test('composing the plugin registers the four Tavily tools', () => {
+  const { tools } = bench()
+  assert.deepEqual(
+    tools.map((definition) => definition.name),
+    ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl']
+  )
 })
 
-test('normalizeArgs: defaults and clamping', () => {
-  const args = normalizeArgs({ query: 'x' })
-  assert.equal(args.maxResults, 5)
-  assert.equal(args.searchDepth, 'basic')
-  assert.equal(args.topic, 'general')
-  assert.equal(args.days, undefined)
-  assert.equal(args.includeAnswer, false)
-  assert.deepEqual(args.includeDomains, [])
-  assert.deepEqual(args.excludeDomains, [])
+test('composing the plugin registers both prompt sections', () => {
+  const { sections } = bench()
+  assert.deepEqual(sections.map((section) => section.name), ['tool:tavily_search', 'tool:tavily_direct'])
 })
 
-test('STRATEGIES and isValidStrategy', () => {
-  assert.deepEqual(STRATEGIES, ['rotate', 'low-usage-first', 'high-usage-first'])
-  assert.equal(isValidStrategy('rotate'), true)
-  assert.equal(isValidStrategy('bogus'), false)
+test('key and usage routes come up, and no tool-switch route exists', () => {
+  const { routes } = bench()
+  assert.ok(routes.has('/api/tavily-usage'), '/api/tavily-usage must be served')
+  assert.ok(routes.has('/api/tavily-manager'), '/api/tavily-manager must be served')
+  // The tool-level on/off is gone. Routing it back would revive a switch the
+  // tool half can no longer honour, because there is no disposer contract left.
+  assert.equal(routes.has('/api/tavily-tool'), false, 'the tool switch route must not come back')
+  assert.equal(routes.has('/api/tavily-toggle'), false, 'the legacy toggle alias must not come back')
 })
 
-test('maskValue and parseKeyList', () => {
-  const long = 'tvly-dev-1234567890abcdef'
-  assert.equal(maskValue(long), 'tvly-dev-123…cdef')
-  assert.deepEqual(parseKeyList(' a , b , a , , c '), ['a', 'b', 'c'])
+test('teardown unregisters every tool, prompt section, and route', () => {
+  const { tools, sections, routes, teardowns } = bench()
+  assert.equal(tools.length, 4)
+  // Every registration goes through ctx.effect, so the fiber owns them all.
+  assert.ok(teardowns.length >= 1, 'apply must hand the fiber its teardowns')
+  for (const teardown of teardowns) teardown()
+  assert.deepEqual(tools, [], 'unloading the row must leave nothing registered')
+  assert.deepEqual(sections, [], 'unloading the row must drop the prompt sections too')
+  assert.deepEqual([...routes.keys()], [], 'the routes are fiber effects as well')
 })
 
-test('orderKeys', () => {
-  assert.deepEqual(orderKeys(['b', 'a'], 'rotate', () => 0), ['b', 'a'])
-  assert.deepEqual(orderKeys(['a', 'b'], 'low-usage-first', (key) => key === 'a' ? 100 : 0), ['b', 'a'])
-})
-
-test('readJsonFile: missing or broken file falls back', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tavily-test-'))
-  assert.deepEqual(readJsonFile(join(dir, 'nope.json'), { x: 1 }), { x: 1 })
-  const broken = join(dir, 'broken.json')
-  writeFileSync(broken, 'not json')
-  assert.deepEqual(readJsonFile(broken, { x: 1 }), { x: 1 })
-})
-
-test('isToolEnabled: persisted state wins over plugin config', () => {
-  assert.equal(isToolEnabled({ enabled: true }, { enabled: false }), false)
-  assert.equal(isToolEnabled({ enabled: false }, { enabled: true }), true)
-})
-
-test('isToolEnabled: falls back to plugin config when no state is stored', () => {
-  assert.equal(isToolEnabled({ enabled: true }, null), true)
-  assert.equal(isToolEnabled({ enabled: false }, null), false)
-})
-
-test('TAVILY_NS is the rc.7 plugin-management namespace join key', () => {
-  assert.equal(TAVILY_NS, 'tavily-search')
+test('the built-in web_search is never registered or replaced', () => {
+  const { tools } = bench()
+  assert.equal(tools.some((definition) => definition.name === 'web_search'), false)
 })

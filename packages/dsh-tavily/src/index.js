@@ -1,170 +1,43 @@
 /**
- * `@moguiyu/dsh-tavily` combined package: the advanced `tavily_search` model
- * tool plus the local HTTP backend for usage and key management. The
- * implementations live in the two standalone packages and are composed here,
- * so there is exactly one copy of each:
+ * `@moguiyu/dsh-tavily` — the combined plugin, and now the only package.
  *
- * - tool half — `@moguiyu/dsh-tool-tavily-search` {@link installTavilyTool};
- * - backend half — `@moguiyu/dsh-tavily-backend` {@link installBackend}.
+ * Both halves live here, so there is no cross-package contract left to skew:
  *
- * This package adds the plugin-management seam: the Host installs the
- * `tavily-search` settings section (the key the Plugins configuration tab
- * pairs the card against). The switch value lives both in that namespace and
- * in `~/.dsh/tavily-tool.json`; every write path converges on
- * `settings.update` (or the state file when no settings service exists).
+ * - the model tools (`tools.js`) — `tavily_search`, `tavily_extract`,
+ *   `tavily_map`, `tavily_crawl`, with key rotation and failover on 401/429;
+ * - key and usage management (`backend.js`) — `/api/tavily-usage` and
+ *   `/api/tavily-manager`;
+ * - the browser card (`client.js`) — keys, usage, and strategy.
  *
- * The switch owns the tool half's lifecycle DIRECTLY: it holds the disposer
- * returned by {@link installTavilyTool} and disposes / re-installs it in place.
- * Earlier versions instead restarted the composing row and let `apply()` re-run;
- * that is gone on purpose. A row restart on 0.1.6 re-mounts the fiber into a
- * scope the agent does not see, so the tools ended up registered nowhere and
- * stayed missing for every session until DSH restarted (AGENTS.md §9 gate 5).
- * Do not reintroduce the restart.
+ * Composing the plugin registers the tools. There is NO tool-level on/off:
+ * the Plugins page's own bundle toggle is the only one. Two earlier designs
+ * are gone deliberately, both recorded in `docs/agents/verification.md`:
  *
- * The settings-card switch controls ONLY the opt-in `tavily_search` tool. The
- * built-in `web_search` tool is never replaced: this package registers no web
- * search provider and never rewrites `web.searchProvider` — `web_search`
- * keeps its native provider.
+ * 1. A row restart. On 0.1.6 it re-mounts the fiber into a scope the agent
+ *    does not see, so the tools ended up registered nowhere and stayed
+ *    missing, process-wide, until dsh restarted.
+ * 2. A tool-level switch split across packages. The combined package needed a
+ *    disposer from the tool half, but its dependency range still allowed the
+ *    old tool half, so `installTavilyTool` returned `undefined` and turning
+ *    the switch off threw. One package removes the range as a failure mode.
+ *
+ * The built-in `web_search` tool is never replaced: no web search provider is
+ * registered, `web.searchProvider` / `DSH_WEB_SEARCH_PROVIDER` are never
+ * rewritten, and `ctx.web` is untouched.
  */
-import z from '@deepseek-ai/schemastery'
-import { isToolEnabled, installTavilyTool } from '@moguiyu/dsh-tool-tavily-search'
-import { installBackend, readToolState, restoreToolState, writeToolState } from '@moguiyu/dsh-tavily-backend'
+import { installTavilyTool } from './tools.js'
+import { installBackend } from './backend.js'
 
 export const name = 'dsh-tavily'
 
 export const inject = ['tools', 'webServer', 'credentials', 'systemPrompt']
 
-export const Config = z.object({
-  enabled: z.boolean().default(false),
-})
+export function apply(ctx) {
+  const disposeTools = installTavilyTool(ctx)
+  installBackend(ctx)
 
-/**
- * Settings namespace owned by this package. It is the join key between the
- * Host half and the browser card: the Plugins configuration tab serves this
- * namespace and dispatches the card registered under the same key. A plain
- * lowercase-hyphenated string, valid on every supported host line: rc.7/rc.8
- * treat the namespace as a branded string (runtime-identical), and 0.1.2
- * validates and brands it on registration (`settingsNamespace()` was
- * removed upstream).
- */
-export const TAVILY_NS = 'tavily-search'
-
-export function apply(ctx, config) {
-  // The switch value this fiber is acting on. Every write path updates it
-  // before (un)registering, so a watcher re-fired afterwards no-ops.
-  let lastApplied = isToolEnabled(config)
-  // Settings seam state: the attached provider (null on hosts without one)
-  // and the authoritative switch source — the resolved section while the
-  // provider is attached, the composition entry otherwise.
-  let settingsProvider = null
-  let settingsSource = () => config
-  // The live registration of the tool half, or null while it is off.
-  let disposeTools = null
-
-  /**
-   * Add or remove the tool half to match `enabled`. This is the whole switch:
-   * `installTavilyTool` hands back a disposer covering its tools and prompt
-   * sections, so turning the capability off is a disposal rather than a row
-   * restart. See the module header for why the restart is gone.
-   */
-  function setTools(enabled) {
-    if (enabled) {
-      if (disposeTools === null) disposeTools = installTavilyTool(ctx)
-      return
-    }
-    if (disposeTools !== null) {
-      const dispose = disposeTools
-      disposeTools = null
-      dispose()
-    }
-  }
-
-  // Seed from the composition entry / persisted switch, and hand the fiber the
-  // teardown so unloading the row leaves nothing registered.
-  setTools(lastApplied)
-  ctx.effect(() => () => { setTools(false) })
-
-  /** Persist the switch, then (un)register the tool half in place. */
-  async function applySwitchLocal(enabled) {
-    if (enabled === lastApplied) return
-    const previous = readToolState()
-    lastApplied = enabled
-    writeToolState(enabled)
-    try {
-      setTools(enabled)
-    } catch (error) {
-      lastApplied = previous !== null ? previous.enabled : (config.enabled !== false)
-      restoreToolState(previous)
-      setTools(lastApplied)
-      throw error
-    }
-  }
-
-  /** Re-judge the switch from a resolved settings value (either seam's shape). */
-  function applySwitchValue(value) {
-    const nextEnabled = value !== null && typeof value === 'object' && typeof value.enabled === 'boolean'
-      ? value.enabled
-      : false
-    applySwitchLocal(nextEnabled).catch((error) => {
-      ctx.logger.warn('tavily-search: applying settings switch failed: %s', error instanceof Error ? error.message : String(error))
-    })
-  }
-
-  // First-class settings integration: install the `tavily-search` section so
-  // the Plugins configuration surface serves it and pairs this package's
-  // card. Runtime-optional on purpose: the row boots (state-file path) even
-  // on hosts that never provide a settings service. Two host seams are
-  // supported by feature detection, so ONE package version covers both host
-  // lines:
-  //
-  // - 0.1.2 (`installSection`) — the row config is the composition entry
-  //   (base layer while a provider is attached, fallback value when one
-  //   detaches); `onChange` re-judges the switch on attach, on detach, and
-  //   on every committed change.
-  // - rc.7/rc.8 (`register`) — the row config is the composition base layer
-  //   and the scope watcher re-judges the switch on every committed change
-  //   (`applies: 'restart'`, the 0.2.0 behavior).
-  ctx.inject(['settings'], (settingsCtx) => {
-    const provider = settingsCtx.settings
-    try {
-      if (typeof provider.installSection === 'function') {
-        provider.installSection(ctx, TAVILY_NS, Config, config, {
-          setSource: (current) => { settingsSource = current },
-          onChange: () => { applySwitchValue(settingsSource()) },
-        })
-        settingsProvider = provider
-        return
-      }
-      if (typeof provider.register === 'function') {
-        const scope = provider.register(TAVILY_NS, Config, {
-          base: { enabled: config.enabled },
-          applies: 'restart',
-        })
-        if (scope !== undefined && scope !== null && typeof scope.watch === 'function') {
-          scope.watch((next) => { applySwitchValue(next) })
-          settingsProvider = provider
-        } else {
-          ctx.logger.warn('tavily-search: settings scope exposes no watcher; using the state-file path')
-        }
-        return
-      }
-      ctx.logger.warn('tavily-search: settings service exposes neither installSection nor register; using the state-file path')
-    } catch (error) {
-      ctx.logger.warn('tavily-search: settings section installation failed: %s', error instanceof Error ? error.message : String(error))
-    }
-  })
-
-  installBackend(ctx, {
-    enabled: () => isToolEnabled(config),
-    async applySwitch(enabled) {
-      // Every write converges on one pipeline: the settings namespace when a
-      // settings service is attached (its watcher persists and re-applies the
-      // switch in place), or the plain state-file path otherwise.
-      if (settingsProvider !== null) {
-        await settingsProvider.update(TAVILY_NS, { enabled })
-      } else {
-        await applySwitchLocal(enabled)
-      }
-    },
-  })
+  // The fiber owns the teardown: unloading the row — including the Plugins
+  // page's runtime unload on 0.1.6-alpha.2 — unregisters every tool and
+  // prompt section this row added.
+  ctx.effect(() => () => { disposeTools() })
 }
