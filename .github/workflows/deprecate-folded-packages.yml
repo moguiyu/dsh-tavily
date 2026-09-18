@@ -1,0 +1,34 @@
+# One-off: mark the two packages folded into @moguiyu/dsh-tavily 0.3.0 as deprecated.
+#
+# Dispatch-only on purpose — it is not part of the release path and never runs on a
+# push. It exists because `npm deprecate` needs a registry token, and the only one
+# available to this repo is the NPM_TOKEN secret the publish workflow already uses.
+#
+# Deprecating is not unpublishing: existing installs keep working and the versions
+# stay downloadable; npm just shows a warning on install.
+name: Deprecate folded packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deprecate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Deprecate the folded packages
+        run: |
+          npm deprecate '@moguiyu/dsh-tool-tavily-search@*' 'Folded into @moguiyu/dsh-tavily 0.3.0. Use @moguiyu/dsh-tavily instead.'
+          npm deprecate '@moguiyu/dsh-tavily-backend@*' 'Folded into @moguiyu/dsh-tavily 0.3.0. Use @moguiyu/dsh-tavily instead.'
+          echo '--- verify ---'
+          npm view @moguiyu/dsh-tool-tavily-search deprecated
+          npm view @moguiyu/dsh-tavily-backend deprecated
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
