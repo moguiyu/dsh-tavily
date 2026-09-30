@@ -29,4 +29,5 @@ which is exactly how the old tool-level switch broke. Both old packages are depr
 There is no tool-level on/off switch. Composing the plugin registers the tools, and the Plugins
 page's own bundle toggle is the only on/off.
 
-See the [workspace README](../../README.md) for install and configuration.
+See the [workspace README](https://github.com/moguiyu/dsh-tavily#readme) for install and
+configuration.

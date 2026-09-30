@@ -30,11 +30,44 @@ jobs:
         run: |
           node packages/dsh-tavily/scripts/build-client.mjs
 
+      # A tag is only a trigger: CI publishes whatever each package.json
+      # declares. Without this assertion a tag that does not name the version
+      # would fall through to the `npm view` guard below, print
+      # "already published; skipping", and report SUCCESS while shipping
+      # nothing. Fail loudly instead.
+      - name: Assert the tag names the version being published
+        run: |
+          DIR=./packages/dsh-tavily
+          VER=$(node -p "require('$DIR/package.json').version")
+          if [ "v$VER" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not name package version $VER. Bump packages/dsh-tavily/package.json (and the root dependency range), commit, then tag v\$VER."
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches package version $VER"
+
+      # lib/client.js is a generated, committed artifact. The build step above
+      # regenerates it, so any diff here means the committed copy is stale and
+      # the tarball would ship a bundle nobody reviewed.
+      - name: Assert the committed client bundle is current
+        run: |
+          if ! git diff --exit-code -- packages/dsh-tavily/lib/client.js; then
+            echo "::error::the build changed lib/client.js — the committed artifact is stale. Run 'pnpm build' locally and commit the regenerated file."
+            exit 1
+          fi
+          echo "committed lib/client.js is the current build output"
+
       # ONE package since 0.3.0. The two standalone packages
       # (@moguiyu/dsh-tool-tavily-search, @moguiyu/dsh-tavily-backend) were
       # folded into @moguiyu/dsh-tavily: the combined package used to import
       # them, and their dependency ranges could stay behind the contract, which
       # is exactly how the tool-level switch broke. Nothing to order any more.
+      #
+      # NOT YET MIGRATED to OIDC trusted publishing. That needs the trusted
+      # publisher configured on npmjs.com FIRST (repository moguiyu/dsh-tavily,
+      # workflow filename publish.yml), plus `id-token: write` here and an npm
+      # CLI >= 11.5.1 — node 22 ships npm 10.9.x, so node-version must also go
+      # to 24 or npm must be upgraded. Doing it in the reverse order breaks the
+      # publish. It also earns the provenance attestation the package lacks.
       - name: Publish @moguiyu/dsh-tavily
         run: |
           PKG=@moguiyu/dsh-tavily

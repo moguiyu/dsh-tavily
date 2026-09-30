@@ -1,8 +1,8 @@
 {
   "name": "dsh-tavily-workspace",
-  "version": "0.2.0",
+  "version": "0.3.4",
   "private": true,
-  "description": "Tavily for DeepSeek Harness: opt-in advanced Tavily model tools (search, extract, map, crawl), multi-key management, usage gauge, and the Tavily Search settings card. The built-in web_search is never replaced.",
+  "description": "Tavily for DeepSeek Harness: opt-in advanced Tavily model tools (search, extract, map, crawl), multi-key management with rotation, failover and a per-account in-flight cap, usage gauge, and the Tavily Search settings card. The built-in web_search is never replaced. | DSH Tavily 可选高级搜索工具：多 Key 轮换、故障转移与按账号并发上限，用量仪表盘与插件配置页设置卡片；内置 web_search 永不替换。",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -12,12 +12,38 @@
     "build": "pnpm -r build"
   },
   "dependencies": {
-    "@moguiyu/dsh-tavily": "^0.3.3"
+    "@moguiyu/dsh-tavily": "^0.3.4"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "rc.8": "compatible",
+        "0.1.2-alpha.2": "compatible",
+        "0.1.5-alpha.2": "compatible",
+        "0.1.5-rc.1": "compatible",
+        "0.1.5-rc.2": "compatible",
+        "0.1.6-alpha.1": "compatible",
+        "0.1.6-alpha.2": "compatible",
+        "0.1.7-rc.2": "compatible",
+        "0.2.0-rc.1": "compatible",
+        "0.2.0-rc.2": "compatible"
+      }
     }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "tavily",
+    "web-search",
+    "tool"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moguiyu/dsh-tavily.git"
   },
   "license": "MIT"
 }
