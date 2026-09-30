@@ -11,10 +11,25 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
+import { STRATEGIES, accountFingerprint, clampAccountCap, groupAccounts, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from './lib.js'
 
-const USAGE_TTL_MS = 60000
+/**
+ * Tavily allows only **10 `/usage` requests per 10 minutes** per key, so the
+ * card's refreshes must not each become an upstream call: entries are served
+ * for two minutes, and a 429 stops asking for as long as `Retry-After` says
+ * (ten minutes by default) while the numbers already loaded keep being served.
+ */
+const USAGE_TTL_MS = 120000
+const USAGE_BACKOFF_MS = 600000
 const usageCache = new Map()
+
+/**
+ * Test seam: age every cache entry so the next read is a real upstream call.
+ * The cache is module-scoped and time-based, which no test can otherwise reach.
+ */
+export function ageUsageCache(ms) {
+  for (const [key, entry] of usageCache) usageCache.set(key, { ...entry, at: entry.at - ms })
+}
 
 const MANAGER_STATE = 'tavily-manager.json'
 const LEGACY_STATE = 'tavily-settings.json'
@@ -50,7 +65,11 @@ function readBody(req) {
 
 async function fetchUsageDetailsFor(key) {
   const cached = usageCache.get(key)
-  if (cached !== undefined && Date.now() - cached.at < USAGE_TTL_MS) return cached.details
+  const now = Date.now()
+  if (cached !== undefined) {
+    if (cached.until !== undefined && now < cached.until) return cached.details
+    if (now - cached.at < USAGE_TTL_MS) return cached.details
+  }
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 15000)
@@ -63,7 +82,18 @@ async function fetchUsageDetailsFor(key) {
     } finally {
       clearTimeout(timer)
     }
-    if (!response.ok) return null
+    if (!response.ok) {
+      if (response.status === 429) {
+        const header = response.headers !== undefined && typeof response.headers.get === 'function'
+          ? Number(response.headers.get('retry-after'))
+          : NaN
+        const waitMs = Number.isFinite(header) && header > 0 ? header * 1000 : USAGE_BACKOFF_MS
+        const details = cached !== undefined ? cached.details : null
+        usageCache.set(key, { at: cached !== undefined ? cached.at : now, details, until: now + waitMs })
+        return details
+      }
+      return null
+    }
     const json = await response.json()
     const account = json !== null && typeof json === 'object' ? json.account : undefined
     const keyUsage = json !== null && typeof json === 'object' ? json.key : undefined
@@ -81,7 +111,7 @@ async function fetchUsageDetailsFor(key) {
       ? account.plan
       : (keyUsage !== undefined && typeof keyUsage.plan === 'string' ? keyUsage.plan : null)
     if (usage === null && planUsage === null) return null
-    const details = { usage, planUsage, planLimit, currentPlan }
+    const details = { usage, planUsage, planLimit, currentPlan, accountId: accountFingerprint(account) }
     usageCache.set(key, { at: Date.now(), details })
     return details
   } catch {
@@ -167,6 +197,35 @@ async function syncPrimary(credentials, value) {
 }
 
 /**
+ * Apply the card's per-key account choices to the stored grouping.
+ *
+ * `auto` drops the entry so the next usage scan infers it again, `own` pins the
+ * key as its own account (the escape hatch when the inference wrongly merges two
+ * accounts), and any other string joins that group. Unknown keys are ignored.
+ */
+function applyAccountOverrides(previous, patch, keys) {
+  const next = previous !== null && previous !== undefined && typeof previous === 'object' && !Array.isArray(previous)
+    ? { ...previous }
+    : {}
+  const known = new Set(keys.map((key) => maskValue(key)))
+  for (const [masked, choice] of Object.entries(patch)) {
+    if (!known.has(masked)) continue
+    if (choice === null || choice === undefined || choice === 'auto') {
+      delete next[masked]
+      continue
+    }
+    if (choice === 'own') {
+      next[masked] = { group: 'own:' + masked, manual: true }
+      continue
+    }
+    if (typeof choice === 'string' && choice.length > 0) {
+      next[masked] = { group: choice, manual: true }
+    }
+  }
+  return next
+}
+
+/**
  * Register the Tavily key/usage routes on `ctx.webServer`:
  * `/api/tavily-usage` and `/api/tavily-manager`.
  *
@@ -229,6 +288,12 @@ export function installBackend(ctx) {
         removable,
       })),
       strategy: isValidStrategy(state.strategy) ? state.strategy : 'rotate',
+      // The tools half reads these from the state file; the card needs them to
+      // show which keys share an account and to offer the per-key override.
+      accounts: state.accounts !== null && state.accounts !== undefined && typeof state.accounts === 'object' && !Array.isArray(state.accounts)
+        ? state.accounts
+        : {},
+      accountCap: clampAccountCap(state.accountCap),
       source,
       writable: { keys: keysWritable, primary: primaryWritable },
     }
@@ -253,20 +318,44 @@ export function installBackend(ctx) {
           return am < bm ? -1 : 1
         })
         const perKey = []
+        const entries = []
         for (const key of orderedKeys) {
+          const masked = maskValue(key)
           try {
             const usage = await fetchUsageDetailsFor(key)
-            perKey.push(usage !== null
-              ? { ok: true, masked: maskValue(key), ...usage }
-              : { ok: false, masked: maskValue(key), error: 'usage unavailable' })
+            if (usage !== null) {
+              perKey.push({
+                ok: true,
+                masked,
+                usage: usage.usage,
+                planUsage: usage.planUsage,
+                planLimit: usage.planLimit,
+                currentPlan: usage.currentPlan,
+              })
+              entries.push({ masked, fingerprint: typeof usage.accountId === 'string' ? usage.accountId : null })
+            } else {
+              perKey.push({ ok: false, masked, error: 'usage unavailable' })
+              entries.push({ masked, fingerprint: null })
+            }
           } catch (error) {
-            perKey.push({ ok: false, masked: maskValue(key), error: String(error && error.message ? error.message : error) })
+            perKey.push({ ok: false, masked, error: String(error && error.message ? error.message : error) })
+            entries.push({ masked, fingerprint: null })
           }
+        }
+        // Tavily has no account id, so the account block each key reports is the
+        // only grouping signal there is. Recompute it here (the one place that
+        // already pays for `/usage`), persist it, and hand it to the card.
+        const accounts = groupAccounts(entries, state.accounts)
+        const accountCap = clampAccountCap(state.accountCap)
+        if (JSON.stringify(state.accounts ?? null) !== JSON.stringify(accounts)) {
+          writeState(MANAGER_STATE, { ...state, accounts, accountCap })
         }
         const okRows = perKey.filter((row) => row.ok)
         return send(res, 200, {
           ok: true,
           perKey,
+          accounts,
+          accountCap,
           totals: {
             keys: keys.length,
             okKeys: okRows.length,
@@ -343,7 +432,10 @@ export function installBackend(ctx) {
             await credentials.unset('TAVILY_API_KEYS')
             await syncPrimary(credentials, null)
           } else {
-            if (strategy !== 'rotate') {
+            // Only the usage-ordered strategies need Tavily's counters, and
+            // `/usage` allows just 10 requests per 10 minutes: never spend one
+            // on a strategy that keeps the list order anyway.
+            if (strategy === 'low-usage-first' || strategy === 'high-usage-first') {
               const usageRows = await Promise.all(values.map(async (value) => ({ value, usage: await fetchUsageFor(value) })))
               const usageOf = (value) => {
                 const row = usageRows.find((r) => r.value === value)
@@ -362,7 +454,14 @@ export function installBackend(ctx) {
             const masked = maskValue(value)
             if (keySavedAt[masked] === undefined) keySavedAt[masked] = now
           }
-          writeState(MANAGER_STATE, { keySavedAt, strategy })
+          // Spread the previous state: writing only these two keys used to drop
+          // every other one — including the account grouping and the cap.
+          const nextState = { ...state, keySavedAt, strategy }
+          if (body.accountCap !== undefined) nextState.accountCap = clampAccountCap(body.accountCap)
+          if (body.accounts !== null && body.accounts !== undefined && typeof body.accounts === 'object' && !Array.isArray(body.accounts)) {
+            nextState.accounts = applyAccountOverrides(state.accounts, body.accounts, values)
+          }
+          writeState(MANAGER_STATE, nextState)
 
           return send(res, 200, { ok: true, ...(await buildManagerPayload(values, source)) })
         }

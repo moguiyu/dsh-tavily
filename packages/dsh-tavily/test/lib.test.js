@@ -6,8 +6,9 @@ import { join } from 'node:path'
 import { STRATEGIES, isValidStrategy, maskValue, parseKeyList, orderKeys, readJsonFile } from '../src/lib.js'
 
 test('STRATEGIES and isValidStrategy', () => {
-  assert.deepEqual(STRATEGIES, ['rotate', 'low-usage-first', 'high-usage-first'])
+  assert.deepEqual(STRATEGIES, ['rotate', 'low-usage-first', 'high-usage-first', 'load-balance'])
   assert.equal(isValidStrategy('rotate'), true)
+  assert.equal(isValidStrategy('load-balance'), true)
   assert.equal(isValidStrategy('bogus'), false)
   assert.equal(isValidStrategy(undefined), false)
 })

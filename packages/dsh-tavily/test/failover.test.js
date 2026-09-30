@@ -1,7 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { apply } from '../src/index.js'
+
+// Hermetic run: the tools half now reads the concurrency policy from the state
+// file, so these tests must not inherit whatever the developer's own ~/.dsh
+// says — a load-balance setting there would change what is under test.
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dsh-tavily-failover-'))
 
 // A key pool is only useful if a key that cannot serve a request is skipped.
 // Tavily reports an over-limit *account* as HTTP 432 (plan limit) or 433

@@ -11,10 +11,17 @@ export function factory(require) {
   const inject = ['slots']
 
   const STRATEGIES = [
-    { id: 'rotate', label: 'Round-robin', hint: 'Use keys in turn; on HTTP 401/429 the next key is tried automatically.' },
+    { id: 'rotate', label: 'Round-robin', hint: 'Use keys in turn; on HTTP 401/429/432/433 the next key is tried automatically.' },
     { id: 'low-usage-first', label: 'Lowest usage first', hint: 'Re-orders keys by current Tavily usage, least-used first. The first key becomes primary.' },
-    { id: 'high-usage-first', label: 'Highest usage first', hint: 'Re-orders keys by current Tavily usage, most-used first. The first key becomes primary.' }
+    { id: 'high-usage-first', label: 'Highest usage first', hint: 'Re-orders keys by current Tavily usage, most-used first. The first key becomes primary.' },
+    {
+      id: 'load-balance',
+      label: 'Load balance',
+      hint: 'Keeps at most the set number of requests in flight per Tavily account and spreads concurrent calls across accounts, so one free account is never hit in parallel. Accounts are inferred from live Tavily usage data — pin a key below if that is wrong. Keys on one account share its 100 requests/minute.'
+    }
   ]
+
+  const ACCOUNT_CAPS = [1, 2, 3, 4, 5, 6, 7, 8]
 
   const ICONS = {
     eye: ['M1.5 8C1.5 8 4 3.5 8 3.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z', 'M8 5.8a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4Z'],
@@ -285,6 +292,49 @@ export function factory(require) {
       }
     }
 
+    // The account grouping is inferred from Tavily's usage counters, which is
+    // the only account-level signal the API offers; these two handlers are the
+    // human override for when the inference is wrong or the cap needs raising.
+    const saveAccount = async (masked, choice) => {
+      setBusy(true)
+      setNotice(null)
+      try {
+        const response = await fetch('/api/tavily-manager', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ add: [], remove: [], strategy, accounts: { [masked]: choice } })
+        })
+        const data = await response.json()
+        if (!data.ok) { setNotice({ error: data.error || 'Account change failed' }); return }
+        setNotice({ ok: choice === 'auto' ? 'Account detected automatically again.' : 'Account pinned for this key.' })
+        await refresh()
+      } catch (error) {
+        setNotice({ error: String(error && error.message ? error.message : error) })
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    const saveCap = async (value) => {
+      setBusy(true)
+      setNotice(null)
+      try {
+        const response = await fetch('/api/tavily-manager', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ add: [], remove: [], strategy, accountCap: Number(value) })
+        })
+        const data = await response.json()
+        if (!data.ok) { setNotice({ error: data.error || 'Cap save failed' }); return }
+        setNotice({ ok: 'Concurrency cap saved — effective on the next search.' })
+        await refresh()
+      } catch (error) {
+        setNotice({ error: String(error && error.message ? error.message : error) })
+      } finally {
+        setBusy(false)
+      }
+    }
+
     const saveAdd = async (item) => {
       const value = item.value.trim()
       if (!value) return
@@ -409,6 +459,35 @@ export function factory(require) {
       : null
     const snapshotAt = snapshot !== null && typeof snapshot === 'object' ? snapshot.at : null
 
+    // The usage response carries the freshest inference (it is the route that
+    // runs it); the manager payload is the fallback, and the only source of the
+    // policy before the first usage answer arrives.
+    const accountsMap = usage !== null && usage.ok === true && usage.accounts !== null && typeof usage.accounts === 'object'
+      ? usage.accounts
+      : (server !== null && server.accounts !== null && server.accounts !== undefined && typeof server.accounts === 'object' ? server.accounts : {})
+    const accountCap = usage !== null && usage.ok === true && typeof usage.accountCap === 'number'
+      ? usage.accountCap
+      : (server !== null && typeof server.accountCap === 'number' ? server.accountCap : 1)
+    const accountOf = (masked) => {
+      const entry = accountsMap[masked]
+      const group = entry !== null && entry !== undefined && typeof entry === 'object' && typeof entry.group === 'string' ? entry.group : null
+      return {
+        group,
+        own: group !== null && group.indexOf('own:') === 0,
+        manual: entry !== null && entry !== undefined && entry.manual === true,
+      }
+    }
+    const accountLabel = (group) => {
+      const name = /^acct-(\d+)$/.exec(group)
+      return name === null ? group : 'Account ' + name[1]
+    }
+    const groupChoices = []
+    for (const key of (server !== null ? server.keys : [])) {
+      const { group, own } = accountOf(key.masked)
+      if (group === null || own) continue
+      if (!groupChoices.includes(group)) groupChoices.push(group)
+    }
+
     // The Plugins page draws the title, the icon, and the crumb — the
     // `plugins.bundle.config` contract puts the form alone in the entry — so
     // this renders no card chrome, no second heading, and no collapse.
@@ -427,6 +506,7 @@ export function factory(require) {
                 react.createElement('thead', null,
                   react.createElement('tr', null,
                     react.createElement('th', { style: headStyle }, 'Key'),
+                    react.createElement('th', { style: headStyle }, 'Account'),
                     react.createElement('th', { style: headStyle }, 'Usage'),
                     react.createElement('th', { style: headStyle }, 'Saved'),
                     react.createElement('th', { style: headStyle }, 'Actions')
@@ -452,6 +532,13 @@ export function factory(require) {
                       ? usageRow.planUsage
                       : null
                     const isStale = (freshRow === null || freshRow === undefined) && storedRow !== null
+                    // Which Tavily account this key belongs to, and the override.
+                    const account = accountOf(masked)
+                    const currentChoice = account.manual ? (account.own ? 'own' : account.group) : 'auto'
+                    const accountChoices = ['auto'].concat(groupChoices).concat(['own'])
+                    if (currentChoice !== 'auto' && !accountChoices.includes(currentChoice)) {
+                      accountChoices.splice(1, 0, currentChoice)
+                    }
                     return react.createElement('tr', { key: masked, style: { borderBottom: '1px solid var(--dsw-alias-border-l2)', opacity: isRemoved ? 0.45 : 1 } },
                       react.createElement('td', { style: Object.assign({}, cellStyle, { fontFamily: 'var(--ds-font-family-code, monospace)', fontSize: 12, wordBreak: 'break-all' }) },
                         isReplacing
@@ -469,6 +556,26 @@ export function factory(require) {
                                 style: { display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: 'var(--dsw-alias-state-success-primary)', marginLeft: 8, verticalAlign: 'middle', flex: 'none' }
                               })
                             )
+                      ),
+                      react.createElement('td', { style: cellStyle },
+                        react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                          react.createElement('span', {
+                            className: 'dts-account-chip',
+                            style: { fontSize: 11, color: account.group === null ? 'var(--dsw-alias-label-tertiary)' : 'var(--dsw-alias-label-secondary)' }
+                          }, account.group === null ? 'Ungrouped' : (account.own ? 'Separate' : accountLabel(account.group))),
+                          react.createElement('select', {
+                            className: 'dts-account',
+                            'data-masked': masked,
+                            title: 'Which Tavily account this key counts against. Auto follows the grouping inferred from usage; Separate gives the key its own account, so it is never held back by another key.',
+                            value: currentChoice,
+                            disabled: busy,
+                            onChange: (event) => saveAccount(masked, event.target.value),
+                            style: { height: 26, borderRadius: 6, border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', fontSize: 11, maxWidth: 130 }
+                          },
+                            accountChoices.map((choice) => react.createElement('option', { key: choice, value: choice },
+                              choice === 'auto' ? 'Auto' : (choice === 'own' ? 'Separate' : accountLabel(choice))))
+                          )
+                        )
                       ),
                       react.createElement('td', { style: cellStyle },
                         react.createElement(UsageCircle, {
@@ -519,6 +626,7 @@ export function factory(require) {
                     ),
                     react.createElement('td', { style: cellStyle }, '—'),
                     react.createElement('td', { style: cellStyle }, '—'),
+                    react.createElement('td', { style: cellStyle }, '—'),
                     react.createElement('td', { style: cellStyle },
                       react.createElement('span', { style: { display: 'inline-flex', gap: 2 } },
                         react.createElement(IconButton, { icon: 'check', title: 'Save key', onClick: () => saveAdd(item), disabled: busy || item.value.trim().length === 0 }),
@@ -535,11 +643,21 @@ export function factory(require) {
                 react.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
                   react.createElement('label', { style: { fontWeight: 500, fontSize: 13 } }, 'Key usage strategy'),
                   react.createElement('select', {
+                    className: 'dts-strategy',
                     style: { maxWidth: 280, height: 32, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', padding: '0 10px', fontSize: 13 },
                     value: strategy,
                     onChange: (event) => saveStrategy(event.target.value),
                     disabled: busy
                   }, STRATEGIES.map((option) => react.createElement('option', { key: option.id, value: option.id }, option.label))),
+                  strategy === 'load-balance' && react.createElement('label', { style: { fontWeight: 500, fontSize: 13, marginLeft: 8 } }, 'Per account'),
+                  strategy === 'load-balance' && react.createElement('select', {
+                    className: 'dts-account-cap',
+                    title: 'How many requests may be in flight for one Tavily account at a time. One suits a free key.',
+                    style: { height: 32, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', padding: '0 10px', fontSize: 13 },
+                    value: String(accountCap),
+                    onChange: (event) => saveCap(event.target.value),
+                    disabled: busy
+                  }, ACCOUNT_CAPS.map((n) => react.createElement('option', { key: n, value: String(n) }, String(n) + (n === 1 ? ' request' : ' requests')))),
                   notice !== null && react.createElement('span', { style: { fontSize: 13, color: notice.ok ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice.ok ? notice.ok : String(notice.error))
                 ),
                 react.createElement('p', { style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } },

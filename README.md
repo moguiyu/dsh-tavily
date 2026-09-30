@@ -15,7 +15,7 @@ The built-in `web_search` tool is **never replaced**: Tavily is an *addition* to
 ## Highlights
 
 - 🔑 **Multiple Tavily API keys** — manage a flat key list from the DSH UI.
-- 🔁 **Key rotation & failover** — round-robin across keys; automatically retries on HTTP 401/429.
+- 🔁 **Key rotation & failover** — round-robin across keys; automatically retries on HTTP 401/429/432/433, and a load-balance mode caps in-flight requests per Tavily account.
 - 📊 **Live usage gauge** — per-key Tavily usage and totals, fetched server-side without exposing keys.
 - ⚡ **Direct Tavily tools** — `tavily_extract` reads a known URL's content, `tavily_map` discovers a site's links, and `tavily_crawl` pulls an entire site, all under the same key rotation.
 
@@ -71,8 +71,13 @@ Both are managed automatically by the card. Keys never leave the server unmasked
 
 ## Key usage strategy
 
-- **Rotate each key** — round-robin; on 401/429 the next key is tried.
+- **Rotate each key** — round-robin; on HTTP 401/429/432/433 the next key is tried.
 - **Lowest usage first / Highest usage first** — re-order keys by live Tavily usage on save.
+- **Load balance** — keep at most *N* requests in flight per Tavily account (1 by default) and spread concurrent calls across accounts, so one free account is never hit in parallel. Tavily's 100 requests/minute applies per account, and several keys can share one account; the grouping is inferred from each key's `account` block on `/usage`, and any key can be pinned or split off by hand in the card's **Account** column.
+
+Keys that cannot serve a request are skipped rather than failing the call: **401, 429, 432 (plan
+limit) and 433 (pay-as-you-go limit) all fail over** to the next key, and every key is tried at most
+once per call.
 
 ## Tavily tools
 
@@ -87,7 +92,8 @@ Composing the plugin registers them; there is no separate tool-level switch. To 
 
 ## State files
 
-- `~/.dsh/tavily-manager.json` — saved key dates + strategy
+- `~/.dsh/tavily-manager.json` — saved key dates, strategy, per-account concurrency cap, and the
+  inferred/pinned account grouping (masked names only)
 
 Mode `600`, no secrets stored.
 

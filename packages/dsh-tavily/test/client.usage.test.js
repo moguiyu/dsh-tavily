@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { factory } from '../src/client.js'
+import {
+  createHarness,
+  deferred,
+  flush,
+  hasSweepArc,
+  jsonResponse,
+  labelOf,
+  memoryStorage,
+  progressCircle,
+  usageButton,
+} from '../test-support/client-harness.js'
 
 // The usage cell is slow: `/api/tavily-usage` asks Tavily for every key's
 // counters. The card must therefore (a) never look "empty" while that is in
@@ -16,21 +26,6 @@ import { factory } from '../src/client.js'
 const SNAPSHOT_KEY = 'dsh-tavily:usage-snapshot:v1'
 const MASK = 'tvly-dev-9UP…aEfc'
 const OTHER_MASK = 'tvly-dev-azX…0FFz'
-const FRAGMENT = 'test-fragment'
-
-function jsonResponse(value) {
-  return { ok: true, async json() { return value } }
-}
-
-function memoryStorage(seed) {
-  const map = new Map(Object.entries(seed || {}))
-  return {
-    getItem: (key) => (map.has(key) ? map.get(key) : null),
-    setItem: (key, value) => { map.set(key, String(value)) },
-    removeItem: (key) => { map.delete(key) },
-    map,
-  }
-}
 
 function managerPayload() {
   return {
@@ -40,6 +35,8 @@ function managerPayload() {
       { masked: OTHER_MASK, savedAt: '2026-08-16T11:39:21.896Z', primary: false, removable: true },
     ],
     strategy: 'low-usage-first',
+    accounts: {},
+    accountCap: 1,
     writable: { keys: true, primary: false },
   }
 }
@@ -48,6 +45,8 @@ function usagePayload(planUsage) {
   return {
     ok: true,
     perKey: [{ ok: true, masked: MASK, usage: planUsage, planUsage, planLimit: 1000 }],
+    accounts: {},
+    accountCap: 1,
     totals: { keys: 1, okKeys: 1, usage: planUsage, planUsage, planLimit: 1000 },
   }
 }
@@ -59,176 +58,6 @@ function snapshot(planUsage) {
     rows: { [MASK]: { ok: true, usage: planUsage, planUsage, planLimit: 1000 } },
   })
 }
-
-/** A deferred promise plus the resolver, for staging slow responses. */
-function deferred() {
-  let resolve
-  const promise = new Promise((settle) => { resolve = settle })
-  return { promise, resolve }
-}
-
-function createHarness(t, options = {}) {
-  const requests = []
-  const frames = []
-  const hooks = []
-  const effectDeps = new Map()
-  const effectCleanups = new Map()
-  const memo = new Map()
-  let cursor = 0
-  let dirty = false
-  let scheduled = []
-  let element = null
-  const routes = options.routes || {}
-
-  const saved = {
-    fetch: globalThis.fetch,
-    window: globalThis.window,
-    raf: globalThis.requestAnimationFrame,
-    caf: globalThis.cancelAnimationFrame,
-  }
-  t.after(() => {
-    globalThis.fetch = saved.fetch
-    if (saved.window === undefined) delete globalThis.window
-    else globalThis.window = saved.window
-    if (saved.raf === undefined) delete globalThis.requestAnimationFrame
-    else globalThis.requestAnimationFrame = saved.raf
-    if (saved.caf === undefined) delete globalThis.cancelAnimationFrame
-    else globalThis.cancelAnimationFrame = saved.caf
-  })
-
-  globalThis.requestAnimationFrame = (callback) => { frames.push(callback); return frames.length }
-  globalThis.cancelAnimationFrame = () => {}
-  globalThis.window = { localStorage: options.storage }
-  globalThis.fetch = async (url, init) => {
-    const path = String(url).split('?')[0]
-    requests.push({ path, init })
-    const route = routes[path]
-    if (route === undefined) throw new Error('unrouted request: ' + path)
-    return route()
-  }
-
-  const react = {
-    Fragment: FRAGMENT,
-    createElement(type, props, ...children) {
-      if (typeof type === 'function') return type(props)
-      return { type, props: props || {}, children }
-    },
-    useState(initial) {
-      const index = cursor++
-      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial
-      const set = (value) => {
-        hooks[index] = typeof value === 'function' ? value(hooks[index]) : value
-        dirty = true
-      }
-      return [hooks[index], set]
-    },
-    useEffect(callback, deps) {
-      const index = cursor++
-      const previous = effectDeps.get(index)
-      const changed = previous === undefined || deps === undefined ||
-        deps.length !== previous.length || deps.some((value, i) => !Object.is(value, previous[i]))
-      if (!changed) return
-      effectDeps.set(index, deps)
-      const cleanup = effectCleanups.get(index)
-      if (cleanup !== undefined) cleanup()
-      scheduled.push(() => { effectCleanups.set(index, callback()) })
-    },
-    useCallback(callback, deps) {
-      const index = cursor++
-      const previous = memo.get(index)
-      if (previous !== undefined && deps !== undefined &&
-        deps.length === previous.deps.length && deps.every((value, i) => Object.is(value, previous.deps[i]))) {
-        return previous.value
-      }
-      memo.set(index, { deps, value: callback })
-      return callback
-    },
-    useMemo(factoryFn, deps) {
-      const index = cursor++
-      const previous = memo.get(index)
-      if (previous !== undefined && deps !== undefined &&
-        deps.length === previous.deps.length && deps.every((value, i) => Object.is(value, previous.deps[i]))) {
-        return previous.value
-      }
-      const value = factoryFn()
-      memo.set(index, { deps, value })
-      return value
-    },
-    useRef(initial) {
-      const index = cursor++
-      if (!(index in hooks)) hooks[index] = { current: initial }
-      return hooks[index]
-    },
-  }
-
-  const plugin = factory((name) => (name === 'react' ? react : {}))
-  let component = null
-  const ctx = {
-    slots: {
-      inject: (name, callback) => callback(),
-      register: (options_, registered) => { component = registered; return () => {} },
-    },
-  }
-  plugin.apply(ctx)
-
-  const render = () => {
-    let guard = 0
-    do {
-      dirty = false
-      cursor = 0
-      scheduled = []
-      element = component({ view: 'page' })
-      while (scheduled.length > 0) scheduled.shift()()
-    } while (dirty && ++guard < 50)
-  }
-
-  return {
-    requests,
-    frames,
-    render,
-    element: () => element,
-    stepFrame(at) {
-      const next = frames.shift()
-      if (next === undefined) return false
-      next(at)
-      return true
-    },
-  }
-}
-
-function flatten(node, out = []) {
-  if (node === null || node === undefined || typeof node === 'boolean') return out
-  if (Array.isArray(node)) {
-    for (const item of node) flatten(item, out)
-    return out
-  }
-  if (typeof node === 'object' && node.type !== undefined) {
-    if (node.type !== FRAGMENT) out.push(node)
-    for (const child of node.children || []) flatten(child, out)
-  }
-  return out
-}
-
-function usageButton(element) {
-  return flatten(element).find((node) => node.type === 'button' &&
-    typeof node.props.title === 'string' && /usage/i.test(node.props.title))
-}
-
-function labelOf(button) {
-  const span = flatten(button).find((node) => node.type === 'span')
-  if (span === undefined) return null
-  return span.children.filter((child) => typeof child === 'string').join('')
-}
-
-function progressCircle(element) {
-  return flatten(element).find((node) => node.type === 'circle' && node.props.strokeDasharray !== undefined)
-}
-
-function hasSweepArc(element) {
-  return flatten(element).some((node) => node.props.className === 'dts-ring-sweep')
-}
-
-const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 test('the first load with nothing stored announces loading instead of a bare dash', async (t) => {
   const usage = deferred()

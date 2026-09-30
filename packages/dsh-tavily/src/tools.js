@@ -16,7 +16,10 @@
  * (0.1.6 row restart, then the 0.2.x dependency-range skew). Removing the
  * capability removes the failure mode; see `docs/agents/verification.md`.
  */
+import { join } from 'node:path'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { clampAccountCap, maskValue, readJsonFile } from './lib.js'
 
 const TAVILY_BASE_URL = 'https://api.tavily.com'
 
@@ -36,6 +39,106 @@ const RETRYABLE_REASON = new Map([
   [432, 'Tavily plan usage limit exceeded'],
   [433, 'Tavily pay-as-you-go limit exceeded'],
 ])
+
+const MANAGER_STATE = 'tavily-manager.json'
+
+/**
+ * The concurrency policy the card writes: the strategy, the per-account cap,
+ * and the account grouping the usage route inferred (or the user pinned). Read
+ * per call, so a card change takes effect on the next search, and tolerant of a
+ * missing or half-written file.
+ */
+function readConcurrencyPolicy() {
+  const state = readJsonFile(join(resolveDshHome(), MANAGER_STATE), {})
+  const accounts = state.accounts !== null && state.accounts !== undefined &&
+    typeof state.accounts === 'object' && !Array.isArray(state.accounts)
+    ? state.accounts
+    : {}
+  return {
+    balanced: state.strategy === 'load-balance',
+    cap: clampAccountCap(state.accountCap),
+    accounts,
+  }
+}
+
+/**
+ * The account one key belongs to. A key the usage route could not group is
+ * treated as its own account: the cap still applies to it, and it stays
+ * parallel-safe with keys of other accounts.
+ */
+function accountOfKey(key, accounts) {
+  const masked = maskValue(key)
+  const entry = accounts[masked]
+  if (entry !== null && entry !== undefined && typeof entry === 'object' &&
+    typeof entry.group === 'string' && entry.group.length > 0) {
+    return entry.group
+  }
+  return 'key:' + masked
+}
+
+/**
+ * Per-account in-flight limiter. One instance per installed tool half, so every
+ * tool call in the process shares it — which is the point: parallel calls queue
+ * behind one free account instead of hitting it at the same time.
+ */
+function createAccountScheduler() {
+  const active = new Map()
+  const waiters = []
+  const activeIn = (group) => active.get(group) ?? 0
+
+  const detach = (waiter) => {
+    if (waiter.signal !== null && waiter.signal !== undefined && waiter.onAbort !== undefined) {
+      waiter.signal.removeEventListener('abort', waiter.onAbort)
+    }
+  }
+
+  function wake() {
+    for (let index = 0; index < waiters.length; index += 1) {
+      const waiter = waiters[index]
+      if (activeIn(waiter.group) >= waiter.cap) continue
+      waiters.splice(index, 1)
+      index -= 1
+      detach(waiter)
+      // Reserve the slot here: waking two waiters must never hand out one slot.
+      active.set(waiter.group, activeIn(waiter.group) + 1)
+      waiter.resolve()
+    }
+  }
+
+  return {
+    activeIn,
+    /** Resolves `true` when the caller had to wait for capacity. */
+    async acquire(group, cap, signal) {
+      if (activeIn(group) < cap) {
+        active.set(group, activeIn(group) + 1)
+        return false
+      }
+      const aborted = () => new Error('tavily: request aborted while waiting for account capacity')
+      if (signal !== null && signal !== undefined && signal.aborted === true) throw aborted()
+      await new Promise((resolve, reject) => {
+        const waiter = { group, cap, resolve, signal }
+        if (signal !== null && signal !== undefined) {
+          waiter.onAbort = () => {
+            const index = waiters.indexOf(waiter)
+            if (index >= 0) waiters.splice(index, 1)
+            detach(waiter)
+            reject(aborted())
+          }
+          signal.addEventListener('abort', waiter.onAbort, { once: true })
+        }
+        waiters.push(waiter)
+      })
+      // The waker already reserved this slot.
+      return true
+    },
+    release(group) {
+      const next = activeIn(group) - 1
+      if (next <= 0) active.delete(group)
+      else active.set(group, next)
+      wake()
+    },
+  }
+}
 
 /** Clamp a number into [min, max]; `fallback` when not finite. */
 export function clampInt(value, min, max, fallback) {
@@ -450,6 +553,7 @@ const NAVIGATION_PARAMETERS = {
  */
 export function installTavilyTool(ctx) {
   let rotation = 0
+  const scheduler = createAccountScheduler()
 
   // Every registration is collected into one disposer so the fiber tears the
   // half down cleanly: on row unload, and on the Plugins page's runtime unload
@@ -483,6 +587,12 @@ export function installTavilyTool(ctx) {
    * key at most once. Folding the attempt offset into the cursor instead
    * (the earlier shape) skipped keys and repeated others whenever the pool
    * size was even.
+   *
+   * Under `load-balance` the slot is chosen by account capacity instead: the
+   * first key, from the cursor, whose account is below the cap — so parallel
+   * calls spread across accounts, and a call queues rather than opening a
+   * second connection to one free account. Every other strategy keeps the
+   * plain order above, untouched.
    */
   async function requestWithRotation(operation, body, timeoutMs, exec, detail) {
     const { keys, source } = await resolveKeys()
@@ -491,12 +601,44 @@ export function installTavilyTool(ctx) {
     }
     const attempts = keys.length
     const first = rotation
+    const policy = readConcurrencyPolicy()
+    const groups = policy.balanced ? keys.map((key) => accountOfKey(key, policy.accounts)) : null
+    const signal = exec !== null && exec !== undefined ? exec.signal : undefined
+    const tried = new Set()
+    const pickBalancedIndex = (fallbackAttempt) => {
+      let leastBusy = null
+      let leastLoad = Infinity
+      for (let step = 0; step < keys.length; step += 1) {
+        const candidate = (first + step) % keys.length
+        if (tried.has(candidate)) continue
+        const load = scheduler.activeIn(groups[candidate])
+        if (load < policy.cap) return candidate
+        if (load < leastLoad) {
+          leastBusy = candidate
+          leastLoad = load
+        }
+      }
+      return leastBusy === null ? (first + fallbackAttempt) % keys.length : leastBusy
+    }
     let lastRetryable = 0
     for (let attempt = 0; attempt < attempts; attempt++) {
-      const index = (first + attempt) % keys.length
+      const index = groups === null ? (first + attempt) % keys.length : pickBalancedIndex(attempt)
+      tried.add(index)
       const key = keys[index]
+      const group = groups === null ? null : groups[index]
+      if (group !== null) {
+        const waited = await scheduler.acquire(group, policy.cap, signal)
+        if (waited) {
+          ctx.logger.info(`tavily_${operation}: waited for account capacity %j`, { group, cap: policy.cap, keys: keys.length })
+        }
+      }
       const started = Date.now()
-      const outcome = await callOperation(operation, body, key, exec, timeoutMs)
+      let outcome
+      try {
+        outcome = await callOperation(operation, body, key, exec, timeoutMs)
+      } finally {
+        if (group !== null) scheduler.release(group)
+      }
       if (outcome.kind === 'ok') {
         rotation = (index + 1) % keys.length
         const extra = typeof detail === 'function' ? detail(outcome.json) : {}
