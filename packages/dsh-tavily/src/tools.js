@@ -2,7 +2,8 @@
  * Tool half of `@moguiyu/dsh-tavily`: the advanced `tavily_search` model tool
  * plus the extra Tavily direct tools (`tavily_extract`, `tavily_map`,
  * `tavily_crawl`). Keys resolve from the `TAVILY_API_KEYS` credential per
- * call; rotation is round-robin with failover on 401/429.
+ * call; rotation is round-robin with failover on every per-key refusal
+ * (401/429, plus Tavily's 432 plan-limit and 433 pay-as-you-go-limit codes).
  *
  * The tools are an OPTION for search, never a replacement: they are
  * independent of the built-in `web_search` provider, and registering them
@@ -18,6 +19,23 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 const TAVILY_BASE_URL = 'https://api.tavily.com'
+
+/**
+ * Statuses that mean "this key cannot serve the request — try another one".
+ * Tavily documents 432 (plan limit exceeded) and 433 (pay-as-you-go limit
+ * exceeded) as conditions of the key's account, so in a multi-key pool they
+ * are failover cases exactly like 401/429. Treating them as fatal made a pool
+ * with one exhausted account fail calls that a healthy key could have served.
+ */
+const RETRYABLE_STATUS = new Set([401, 429, 432, 433])
+
+/** Why a retryable status refused the key; the pool's exhaustion report uses it. */
+const RETRYABLE_REASON = new Map([
+  [401, 'invalid or missing key'],
+  [429, 'rate limit'],
+  [432, 'Tavily plan usage limit exceeded'],
+  [433, 'Tavily pay-as-you-go limit exceeded'],
+])
 
 /** Clamp a number into [min, max]; `fallback` when not finite. */
 export function clampInt(value, min, max, fallback) {
@@ -103,7 +121,7 @@ async function callOperation(operation, body, key, exec, timeoutMs) {
       body: JSON.stringify(body),
       signal: combined.signal,
     })
-    if (response.status === 401 || response.status === 429) {
+    if (RETRYABLE_STATUS.has(response.status)) {
       return { kind: 'retryable', statusCode: response.status }
     }
     if (!response.ok) {
@@ -113,6 +131,8 @@ async function callOperation(operation, body, key, exec, timeoutMs) {
         if (parsed !== null && typeof parsed === 'object') {
           if (typeof parsed.error === 'string') message = parsed.error
           else if (parsed.error !== null && typeof parsed.error === 'object' && typeof parsed.error.message === 'string') message = parsed.error.message
+          // 432/433 and other API failures arrive as {"detail":{"error":…}}.
+          else if (parsed.detail !== undefined && parsed.detail !== null && typeof parsed.detail === 'object' && typeof parsed.detail.error === 'string') message = parsed.detail.error
         }
       } catch {
         /* keep the status message */
@@ -455,16 +475,25 @@ export function installTavilyTool(ctx) {
     return { keys: [], source: 'unconfigured' }
   }
 
-  /** Run `body` through the rotation/failover loop; returns the response JSON. */
+  /**
+   * Run `body` through the rotation/failover loop; returns the response JSON.
+   *
+   * The first key is picked from the shared round-robin cursor, and each
+   * attempt advances by exactly one slot, so one call tries every configured
+   * key at most once. Folding the attempt offset into the cursor instead
+   * (the earlier shape) skipped keys and repeated others whenever the pool
+   * size was even.
+   */
   async function requestWithRotation(operation, body, timeoutMs, exec, detail) {
     const { keys, source } = await resolveKeys()
     if (keys.length === 0) {
       throw new Error(`tavily_${operation}: TAVILY_API_KEYS is not configured — add it via the Tavily Search settings card or ~/.dsh/.credentials.yaml (comma-separated)`)
     }
     const attempts = keys.length
+    const first = rotation
     let lastRetryable = 0
     for (let attempt = 0; attempt < attempts; attempt++) {
-      const index = (rotation + attempt) % keys.length
+      const index = (first + attempt) % keys.length
       const key = keys[index]
       const started = Date.now()
       const outcome = await callOperation(operation, body, key, exec, timeoutMs)
@@ -478,7 +507,8 @@ export function installTavilyTool(ctx) {
       rotation = (index + 1) % keys.length
       ctx.logger.info(`tavily_${operation}: key %d/%d returned HTTP %d, rotating`, index + 1, keys.length, outcome.statusCode)
     }
-    throw new Error(`tavily_${operation}: all ${attempts} configured key(s) failed with HTTP ${lastRetryable} (invalid key or rate limit)`)
+    const reason = RETRYABLE_REASON.get(lastRetryable) ?? 'invalid key or rate limit'
+    throw new Error(`tavily_${operation}: all ${attempts} configured key(s) failed with HTTP ${lastRetryable} (${reason})`)
   }
 
   tools.register(defineTool({

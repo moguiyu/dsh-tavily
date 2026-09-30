@@ -32,6 +32,113 @@ window.__ModuleLoader__.load({
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
   }
 
+  function formatClock(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return null
+    const pad = (n) => String(n).padStart(2, '0')
+    return pad(d.getHours()) + ':' + pad(d.getMinutes())
+  }
+
+  // `/api/tavily-usage` asks Tavily for every key's counters, so it can take a
+  // while. Two rules follow: the cell must never look *empty* while that is in
+  // flight, and the last values already shown must survive a page reload. Only
+  // masked names and counters are stored — never key material.
+  const USAGE_SNAPSHOT_KEY = 'dsh-tavily:usage-snapshot:v1'
+  const RING_GROWTH_MS = 650
+
+  function usageStorage() {
+    try {
+      if (typeof window === 'undefined' || window === null || !window.localStorage) return null
+      return window.localStorage
+    } catch (error) {
+      return null
+    }
+  }
+
+  function readUsageSnapshot() {
+    const storage = usageStorage()
+    if (storage === null) return null
+    try {
+      const parsed = JSON.parse(storage.getItem(USAGE_SNAPSHOT_KEY))
+      if (parsed === null || typeof parsed !== 'object') return null
+      if (parsed.version !== 1) return null
+      if (parsed.rows === null || typeof parsed.rows !== 'object') return null
+      return parsed
+    } catch (error) {
+      return null
+    }
+  }
+
+  function writeUsageSnapshot(data) {
+    const storage = usageStorage()
+    if (storage === null) return
+    try {
+      const perKey = data !== null && data !== undefined && Array.isArray(data.perKey) ? data.perKey : []
+      const rows = {}
+      for (const row of perKey) {
+        if (row === null || typeof row !== 'object' || typeof row.masked !== 'string') continue
+        rows[row.masked] = {
+          ok: row.ok === true,
+          usage: typeof row.usage === 'number' ? row.usage : null,
+          planUsage: typeof row.planUsage === 'number' ? row.planUsage : null,
+          planLimit: typeof row.planLimit === 'number' ? row.planLimit : null
+        }
+      }
+      if (Object.keys(rows).length === 0) return
+      storage.setItem(USAGE_SNAPSHOT_KEY, JSON.stringify({ version: 1, at: new Date().toISOString(), rows: rows }))
+    } catch (error) {
+      /* storage is best-effort; the card still works without it */
+    }
+  }
+
+  function usagePercent(row) {
+    if (row === null || row === undefined || row.ok !== true) return null
+    if (row.planLimit === null || row.planLimit === undefined || row.planLimit <= 0) return null
+    if (row.planUsage === null || row.planUsage === undefined) return null
+    return Math.min(100, Math.round((row.planUsage / row.planLimit) * 100))
+  }
+
+  /**
+   * Count a number up to `target` instead of swapping it. Returns the value to
+   * paint now. A first-ever value (or a non-number) is set instantly: there is
+   * nothing to grow from.
+   */
+  function useAnimatedNumber(target, durationMs) {
+    const [display, setDisplay] = react.useState(target)
+    const displayRef = react.useRef(target)
+    const frameRef = react.useRef(0)
+    react.useEffect(() => {
+      const from = typeof displayRef.current === 'number' ? displayRef.current : null
+      const settle = (value) => { displayRef.current = value; setDisplay(value) }
+      if (typeof target !== 'number' || from === null || from === target) {
+        settle(typeof target === 'number' ? target : null)
+        return undefined
+      }
+      if (typeof requestAnimationFrame !== 'function') {
+        settle(target)
+        return undefined
+      }
+      let started = null
+      const tick = (now) => {
+        const stamp = typeof now === 'number' ? now : Date.now()
+        if (started === null) started = stamp
+        const elapsed = durationMs > 0 ? (stamp - started) / durationMs : 1
+        const t = Math.min(1, Math.max(0, elapsed))
+        const eased = 1 - Math.pow(1 - t, 3)
+        const next = t >= 1 ? target : Math.round(from + (target - from) * eased)
+        displayRef.current = next
+        setDisplay(next)
+        if (t < 1) frameRef.current = requestAnimationFrame(tick)
+      }
+      frameRef.current = requestAnimationFrame(tick)
+      return () => {
+        if (typeof cancelAnimationFrame === 'function' && frameRef.current) cancelAnimationFrame(frameRef.current)
+      }
+    }, [target, durationMs])
+    return display
+  }
+
   function SvgIcon({ name, size, style }) {
     const paths = ICONS[name] || []
     return react.createElement('svg', { width: size || 14, height: size || 14, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', style: style },
@@ -51,17 +158,54 @@ window.__ModuleLoader__.load({
     }, react.createElement(SvgIcon, { name: icon, size: 13 }))
   }
 
-  function UsageCircle({ percent, size, label, onClick }) {
+  function UsageCircle({ percent, number, loading, stale, staleAt, onClick }) {
     const radius = 15
     const circumference = 2 * Math.PI * radius
     const pct = percent != null ? Math.min(100, Math.max(0, percent)) : 0
-    const dim = size || 44
-    return react.createElement('button', { type: 'button', title: 'Reload usage', 'aria-label': 'Reload usage', onClick: onClick, style: { position: 'relative', width: dim, height: dim, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } },
-      react.createElement('svg', { width: dim, height: dim, viewBox: '0 0 40 40' },
+    const dim = 44
+    const animated = useAnimatedNumber(percent != null ? percent : (number != null ? number : null), RING_GROWTH_MS)
+    const shown = animated != null ? animated : (number != null ? number : null)
+    const offset = circumference - (pct / 100) * circumference
+    const label = percent != null
+      ? (shown != null ? shown + '%' : '—')
+      : (shown != null ? String(shown) : '—')
+    const clock = formatClock(staleAt)
+    const title = loading
+      ? (stale && clock !== null ? 'Updating usage… showing the values loaded at ' + clock : 'Updating usage…')
+      : (stale && clock !== null ? 'Showing the values loaded at ' + clock + ' — click to refresh' : 'Reload usage')
+    return react.createElement('button', {
+      type: 'button',
+      title: title,
+      'aria-label': 'Reload usage',
+      'aria-busy': loading ? 'true' : 'false',
+      'data-loading': loading ? 'true' : 'false',
+      'data-stale': stale ? 'true' : 'false',
+      onClick: onClick,
+      style: { position: 'relative', width: dim, height: dim, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
+    },
+      react.createElement('svg', { width: dim, height: dim, viewBox: '0 0 40 40', className: loading ? 'dts-ring dts-ring-loading' : 'dts-ring' },
         react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: 'var(--dsw-alias-border-l2)', strokeWidth: 4 }),
-        react.createElement('circle', { cx: 20, cy: 20, r: radius, fill: 'none', stroke: 'var(--dsw-alias-state-success-primary)', strokeWidth: 4, strokeLinecap: 'round', strokeDasharray: circumference, strokeDashoffset: circumference - (pct / 100) * circumference, transform: 'rotate(-90 20 20)' })
+        react.createElement('circle', {
+          className: 'dts-ring-progress',
+          cx: 20, cy: 20, r: radius, fill: 'none',
+          stroke: 'var(--dsw-alias-state-success-primary)', strokeWidth: 4, strokeLinecap: 'round',
+          strokeDasharray: circumference,
+          strokeDashoffset: offset,
+          transform: 'rotate(-90 20 20)',
+          // The offset is carried as a style value as well as an attribute:
+          // presentation attributes alone do not reliably transition.
+          style: { strokeDashoffset: offset, transition: 'stroke-dashoffset ' + RING_GROWTH_MS + 'ms cubic-bezier(.22,.61,.36,1)' }
+        }),
+        loading && react.createElement('g', { className: 'dts-ring-sweep', style: { transformOrigin: '20px 20px' } },
+          react.createElement('circle', {
+            cx: 20, cy: 20, r: radius, fill: 'none',
+            stroke: 'var(--dsw-alias-state-success-primary)', strokeWidth: 4, strokeLinecap: 'round',
+            strokeDasharray: (circumference * 0.22) + ' ' + (circumference * 0.78),
+            opacity: 0.45
+          })
+        )
       ),
-      react.createElement('span', { style: { position: 'absolute', fontSize: 11, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, label != null ? label : (percent != null ? percent + '%' : '—'))
+      react.createElement('span', { className: 'dts-ring-label', style: { position: 'absolute', fontSize: 11, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, label)
     )
   }
 
@@ -79,23 +223,39 @@ window.__ModuleLoader__.load({
     const [notice, setNotice] = react.useState(null)
     const [usage, setUsage] = react.useState(null)
     const [usageError, setUsageError] = react.useState(null)
+    const [usageLoading, setUsageLoading] = react.useState(true)
+    const [snapshot, setSnapshot] = react.useState(() => readUsageSnapshot())
 
     const refresh = react.useCallback(async () => {
-      try {
-        const response = await fetch('/api/tavily-manager', { cache: 'no-store' })
-        const data = await response.json()
-        if (data.ok) { setServer(data); setStrategy(data.strategy) } else { setLoadError(data.error || 'Failed to load keys') }
-      } catch (error) {
-        setLoadError(String(error && error.message ? error.message : error))
-      }
-      try {
-        const response = await fetch('/api/tavily-usage', { cache: 'no-store' })
-        const data = await response.json()
-        setUsage(data)
-        setUsageError(null)
-      } catch (error) {
-        setUsageError(String(error && error.message ? error.message : error))
-      }
+      setUsageLoading(true)
+      // The two endpoints are independent and the usage one is the slow half,
+      // so they run together: the keys must not wait for Tavily's counters.
+      const keys = (async () => {
+        try {
+          const response = await fetch('/api/tavily-manager', { cache: 'no-store' })
+          const data = await response.json()
+          if (data.ok) { setServer(data); setStrategy(data.strategy) } else { setLoadError(data.error || 'Failed to load keys') }
+        } catch (error) {
+          setLoadError(String(error && error.message ? error.message : error))
+        }
+      })()
+      const counters = (async () => {
+        try {
+          const response = await fetch('/api/tavily-usage', { cache: 'no-store' })
+          const data = await response.json()
+          setUsage(data)
+          setUsageError(null)
+          if (data.ok) {
+            writeUsageSnapshot(data)
+            setSnapshot(readUsageSnapshot())
+          }
+        } catch (error) {
+          setUsageError(String(error && error.message ? error.message : error))
+        } finally {
+          setUsageLoading(false)
+        }
+      })()
+      await Promise.all([keys, counters])
     }, [])
 
     react.useEffect(() => { refresh() }, [refresh])
@@ -239,12 +399,16 @@ window.__ModuleLoader__.load({
 
     const headStyle = { textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid var(--dsw-alias-border-l2)', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' }
     const cellStyle = { padding: '8px', verticalAlign: 'top' }
+    const snapshotRows = snapshot !== null && typeof snapshot === 'object' && snapshot.rows !== null && typeof snapshot.rows === 'object'
+      ? snapshot.rows
+      : null
+    const snapshotAt = snapshot !== null && typeof snapshot === 'object' ? snapshot.at : null
 
     // The Plugins page draws the title, the icon, and the crumb — the
     // `plugins.bundle.config` contract puts the form alone in the entry — so
     // this renders no card chrome, no second heading, and no collapse.
     return react.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 } },
-      react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}'),
+      react.createElement('style', null, '.dts-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover)}.dts-icon-btn:disabled{opacity:.4;cursor:default}.dts-icon-btn-danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger)}@keyframes dts-ring-spin{to{transform:rotate(360deg)}}@keyframes dts-ring-pulse{0%,100%{opacity:1}50%{opacity:.45}}.dts-ring-loading{animation:dts-ring-pulse 1.6s ease-in-out infinite}.dts-ring-sweep{animation:dts-ring-spin 1.1s linear infinite}@media (prefers-reduced-motion: reduce){.dts-ring-loading,.dts-ring-sweep{animation:none}.dts-ring-progress{transition:none!important}}'),
       react.createElement(react.Fragment, null,
               react.createElement('p', { style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } },
                 'All keys are listed below; the green dot marks the first (primary) key. The tavily_search tool uses all keys according to the strategy. Built-in web_search is unaffected.'
@@ -269,12 +433,20 @@ window.__ModuleLoader__.load({
                     const isRemoved = removing[masked] === true
                     const isReplacing = replacing[masked] === true
                     const isRevealed = typeof revealed[masked] === 'string'
-                    const usageRow = usage !== null && usage.ok === true
+                    // Fresh counters win; until they arrive the last stored row is
+                    // shown so the cell reads as "updating", never as "empty".
+                    const freshRow = usage !== null && usage.ok === true
                       ? (usage.perKey.find((row) => row.masked === masked) || usage.perKey[index])
                       : null
-                    const pct = usageRow && usageRow.ok && usageRow.planLimit != null && usageRow.planLimit > 0 && usageRow.planUsage != null
-                      ? Math.min(100, Math.round((usageRow.planUsage / usageRow.planLimit) * 100))
+                    const storedRow = snapshotRows !== null && Object.prototype.hasOwnProperty.call(snapshotRows, masked)
+                      ? snapshotRows[masked]
                       : null
+                    const usageRow = freshRow !== null && freshRow !== undefined ? freshRow : storedRow
+                    const pct = usagePercent(usageRow)
+                    const rawNumber = pct === null && usageRow !== null && usageRow !== undefined && usageRow.ok === true && usageRow.planUsage != null
+                      ? usageRow.planUsage
+                      : null
+                    const isStale = (freshRow === null || freshRow === undefined) && storedRow !== null
                     return react.createElement('tr', { key: masked, style: { borderBottom: '1px solid var(--dsw-alias-border-l2)', opacity: isRemoved ? 0.45 : 1 } },
                       react.createElement('td', { style: Object.assign({}, cellStyle, { fontFamily: 'var(--ds-font-family-code, monospace)', fontSize: 12, wordBreak: 'break-all' }) },
                         isReplacing
@@ -294,7 +466,14 @@ window.__ModuleLoader__.load({
                             )
                       ),
                       react.createElement('td', { style: cellStyle },
-                        react.createElement(UsageCircle, { percent: pct, label: pct != null ? pct + '%' : (usageRow && usageRow.ok && usageRow.planUsage != null ? String(usageRow.planUsage) : '—'), onClick: refresh })
+                        react.createElement(UsageCircle, {
+                          percent: pct,
+                          number: rawNumber,
+                          loading: usageLoading,
+                          stale: isStale,
+                          staleAt: snapshotAt,
+                          onClick: refresh
+                        })
                       ),
                       react.createElement('td', { style: Object.assign({}, cellStyle, { color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' }) }, formatDate(key.savedAt)),
                       react.createElement('td', { style: cellStyle },

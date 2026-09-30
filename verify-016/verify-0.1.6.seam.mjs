@@ -1,8 +1,8 @@
 /**
  * Live seam verification against the harness line this machine actually runs
- * (currently 0.1.6-alpha.1, resolved through ~/.dsh/profiles/node_modules) and
- * the published / installed @moguiyu/dsh-tavily from
- * ~/.dsh/profiles/web/node_modules.
+ * (resolved through ~/.dsh/profiles/node_modules, so it follows whatever line
+ * is installed — 0.1.7-rc.2 at the time of writing) and the working tree's
+ * `packages/dsh-tavily`.
  *
  * Setup (one-time, the symlink dir is git-ignored). The plugin link must point
  * at the WORKING TREE, not at node_modules/@moguiyu: pnpm can relink that entry
@@ -118,13 +118,36 @@ await ctx.plugin({
 })
 await ctx.plugin(FileSettingsProvider)
 
+// The settings service is harness-owned from 0.1.7 on (`SettingsForms` injects
+// `configEditor` + `profileContext`, so a SettingsProvider subclass no longer
+// exposes `settings` here). When the real service is missing, observe a
+// recording stand-in instead: the gate is unchanged — no `tavily-search`
+// namespace may come back — and it now also fails if the plugin reaches for
+// the settings service at all.
+let settingsTouches = []
+let settingsIsRecording = false
+let settings = ctx.get('settings')
+if (settings === undefined) {
+  settingsIsRecording = true
+  const recording = new Proxy({}, {
+    get(_target, property) {
+      if (property === 'then') return undefined
+      return (...args) => { settingsTouches.push([String(property), args.length]); return undefined }
+    },
+  })
+  await ctx.plugin({
+    name: 'settings-recorder',
+    apply(inner) { inner.provide('settings', recording) },
+  })
+  settings = recording
+}
+
 const fiber = ctx.plugin(combined, { enabled: true })
 await fiber
 
 const results = []
 const check = (name, fn) => { fn(); results.push('ok - ' + name) }
 
-const settings = ctx.get('settings')
 const tools = ctx.get('tools')
 const TOOL_NAMES = ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl']
 
@@ -139,11 +162,17 @@ check('the plugin does not inject the loader seam (no row restart is possible)',
 // REMOVAL GATES. The switch owned a settings namespace; both are gone, and a
 // silent re-introduction would revive a contract the tool half can no longer
 // honour. These fail loudly if either comes back.
-check('the plugin registers no settings namespace', () => {
-  const descriptors = settings.describe()
-  assert.equal(descriptors.find((d) => d.ns === 'tavily-search'), undefined,
-    'the tavily-search namespace belonged to the removed switch')
-})
+if (settingsIsRecording) {
+  check('the plugin never reaches for the settings service (' + HARNESS + ' owns it)', () =>
+    assert.deepEqual(settingsTouches, [],
+      'the tavily-search namespace belonged to the removed switch'))
+} else {
+  check('the plugin registers no settings namespace', () => {
+    const descriptors = settings.describe()
+    assert.equal(descriptors.find((d) => d.ns === 'tavily-search'), undefined,
+      'the tavily-search namespace belonged to the removed switch')
+  })
+}
 
 // Metadata gate (§4): the repo's declared peer ranges must accept the very
 // harness we just booted. A new host tuple does NOT cascade through prerelease

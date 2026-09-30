@@ -4,7 +4,8 @@
  * Both halves live here, so there is no cross-package contract left to skew:
  *
  * - the model tools (`tools.js`) — `tavily_search`, `tavily_extract`,
- *   `tavily_map`, `tavily_crawl`, with key rotation and failover on 401/429;
+ *   `tavily_map`, `tavily_crawl`, with key rotation and failover on 401/429
+ *   and on Tavily's per-key 432/433 usage-limit refusals;
  * - key and usage management (`backend.js`) — `/api/tavily-usage` and
  *   `/api/tavily-manager`;
  * - the browser card (`client.js`) — keys, usage, and strategy.
