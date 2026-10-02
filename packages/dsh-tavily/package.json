@@ -12,8 +12,13 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "src",
-    "lib",
+    "src/index.js",
+    "src/invariant.js",
+    "src/tools.js",
+    "src/backend.js",
+    "src/lib.js",
+    "src/client.js",
+    "lib/client.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
