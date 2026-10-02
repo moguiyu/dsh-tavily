@@ -8,7 +8,6 @@
     ".": "./src/index.js",
     "./invariant": "./src/invariant.js",
     "./client": "./lib/client.js",
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
