@@ -3,13 +3,17 @@ import assert from 'node:assert/strict'
 import {
   buildExtractBody,
   buildNavBody,
+  buildResearchBody,
   clampInt,
+  isTerminalResearchStatus,
   normalizeArgs,
   normalizeExtractArgs,
   normalizeNavArgs,
+  normalizeResearchArgs,
   projectCrawl,
   projectExtract,
   projectMap,
+  projectResearch,
 } from '../src/tools.js'
 
 test('clampInt', () => {
@@ -133,4 +137,120 @@ test('projectCrawl: pages and baseUrl', () => {
   assert.equal(out.baseUrl, 'https://a.com')
   assert.deepEqual(out.results, [{ url: 'https://a.com/p', rawContent: 'c' }])
   assert.equal(out.responseTime, undefined)
+})
+
+test('normalizeResearchArgs: input required, `query` accepted as an alias', () => {
+  assert.throws(() => normalizeResearchArgs({}), /input must be a non-empty string/)
+  assert.throws(() => normalizeResearchArgs({ input: '   ' }), /input must be a non-empty string/)
+  assert.equal(normalizeResearchArgs({ input: '  what is DSH?  ' }).input, 'what is DSH?')
+  assert.equal(normalizeResearchArgs({ query: 'aliased' }).input, 'aliased')
+})
+
+test('normalizeResearchArgs: model default and the per-model wait default', () => {
+  const auto = normalizeResearchArgs({ input: 'q' })
+  assert.equal(auto.model, 'auto')
+  assert.equal(auto.waitSeconds, 300)
+  assert.equal(normalizeResearchArgs({ input: 'q', model: 'mini' }).waitSeconds, 120)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', model: 'max' }), /one of mini, pro, auto/)
+})
+
+test('normalizeResearchArgs: timeout_seconds is clamped and may be zero', () => {
+  assert.equal(normalizeResearchArgs({ input: 'q', timeout_seconds: 0 }).waitSeconds, 0)
+  assert.equal(normalizeResearchArgs({ input: 'q', timeout_seconds: 60 }).waitSeconds, 60)
+  assert.equal(normalizeResearchArgs({ input: 'q', timeout_seconds: 5000 }).waitSeconds, 900)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', timeout_seconds: -1 }), /0 or more/)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', timeout_seconds: 'soon' }), /0 or more/)
+})
+
+test('normalizeResearchArgs: domains are capped at 20, enums validated', () => {
+  assert.deepEqual(normalizeResearchArgs({ input: 'q', include_domains: [' a.com '] }).includeDomains, ['a.com'])
+  const many = Array.from({ length: 21 }, (_, i) => 'd' + i + '.com')
+  assert.throws(() => normalizeResearchArgs({ input: 'q', include_domains: many }), /at most 20/)
+  assert.equal(normalizeResearchArgs({ input: 'q', citation_format: 'apa' }).citationFormat, 'apa')
+  assert.throws(() => normalizeResearchArgs({ input: 'q', citation_format: 'ieee' }), /one of numbered, mla, apa, chicago/)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', output_length: 'huge' }), /one of short, standard, long/)
+})
+
+test('normalizeResearchArgs: output_schema must carry a non-empty properties object', () => {
+  const schema = { properties: { author: { type: 'string', description: 'Who' } }, required: ['author'] }
+  assert.deepEqual(normalizeResearchArgs({ input: 'q', output_schema: schema }).outputSchema, schema)
+  assert.equal(normalizeResearchArgs({ input: 'q' }).outputSchema, undefined)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', output_schema: {} }), /properties object/)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', output_schema: 'nope' }), /JSON Schema object/)
+  assert.throws(() => normalizeResearchArgs({ input: 'q', output_schema: { properties: { a: {} }, required: 'a' } }), /required must be an array/)
+})
+
+test('buildResearchBody: only includes provided fields, always input + model', () => {
+  const minimal = buildResearchBody(normalizeResearchArgs({ input: 'q' }))
+  assert.deepEqual(minimal, { input: 'q', model: 'auto' })
+  const full = buildResearchBody(normalizeResearchArgs({
+    input: 'q',
+    model: 'pro',
+    citation_format: 'mla',
+    output_length: 'long',
+    include_domains: ['a.com'],
+    exclude_domains: ['b.com'],
+    output_schema: { properties: { a: { type: 'string', description: 'A' } } },
+  }))
+  assert.deepEqual(full, {
+    input: 'q',
+    model: 'pro',
+    citation_format: 'mla',
+    output_length: 'long',
+    include_domains: ['a.com'],
+    exclude_domains: ['b.com'],
+    output_schema: { properties: { a: { type: 'string', description: 'A' } } },
+  })
+})
+
+test('isTerminalResearchStatus', () => {
+  assert.equal(isTerminalResearchStatus('completed'), true)
+  assert.equal(isTerminalResearchStatus('failed'), true)
+  assert.equal(isTerminalResearchStatus('pending'), false)
+  assert.equal(isTerminalResearchStatus('in_progress'), false)
+})
+
+test('projectResearch: in-progress and failed shapes', () => {
+  assert.deepEqual(projectResearch({ request_id: 'r1', status: 'in_progress', response_time: 0.01 }),
+    { requestId: 'r1', status: 'in_progress', responseTime: 0.01 })
+  assert.deepEqual(projectResearch({ request_id: 'r1', status: 'failed', response_time: 1, usage: { credits: 0 } }),
+    { requestId: 'r1', status: 'failed', responseTime: 1, credits: 0 })
+  assert.deepEqual(projectResearch({}), { requestId: '', status: 'unknown' })
+})
+
+test('projectResearch: a completed prose report keeps content and sources', () => {
+  const out = projectResearch({
+    request_id: 'r1',
+    status: 'completed',
+    created_at: '2026-10-09T11:34:12.585747+00:00',
+    content: 'Body [1]',
+    sources: [
+      { url: 'https://a.com', title: 'A', favicon: 'f.ico' },
+      { url: 'https://b.com' },
+      { title: 'no url' },
+      null,
+    ],
+    response_time: 12.71,
+    usage: { credits: 7 },
+  })
+  assert.equal(out.content, 'Body [1]')
+  assert.equal(out.contentType, undefined)
+  assert.deepEqual(out.sources, [
+    { url: 'https://a.com', title: 'A', favicon: 'f.ico' },
+    { url: 'https://b.com' },
+  ])
+  assert.equal(out.credits, 7)
+  assert.equal(out.responseTime, 12.71)
+  assert.equal(out.createdAt, '2026-10-09T11:34:12.585747+00:00')
+})
+
+test('projectResearch: a structured report is serialized and flagged', () => {
+  const out = projectResearch({ request_id: 'r1', status: 'completed', content: { author: 'Masinter', year: 1998 } })
+  assert.equal(out.contentType, 'json')
+  assert.deepEqual(JSON.parse(out.content), { author: 'Masinter', year: 1998 })
+})
+
+test('projectResearch: a completed task without sources omits the key', () => {
+  const out = projectResearch({ request_id: 'r1', status: 'completed', content: 'x', sources: [] })
+  assert.equal(out.sources, undefined)
 })

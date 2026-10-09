@@ -15,7 +15,7 @@
  *   node verify-016/verify-0.1.6.seam.mjs
  *
  * Boots the real ToolRuntime / SystemPrompt / webServer of the running harness
- * line, then checks the gates that are checkable without a browser: the four
+ * line, then checks the gates that are checkable without a browser: the six
  * Tavily tools register on the real tool runtime, `web_search` is never
  * involved, and the plugin injects neither the web seam nor the loader seam.
  *
@@ -149,9 +149,9 @@ const results = []
 const check = (name, fn) => { fn(); results.push('ok - ' + name) }
 
 const tools = ctx.get('tools')
-const TOOL_NAMES = ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl']
+const TOOL_NAMES = ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl', 'tavily_research', 'tavily_get_research']
 
-check('all four Tavily tools registered on the real ' + HARNESS + ' tool runtime', () => {
+check('all six Tavily tools registered on the real ' + HARNESS + ' tool runtime', () => {
   for (const n of TOOL_NAMES) assert.ok(tools.get(n), n)
 })
 check('web_search is never registered or replaced here', () => assert.equal(tools.get('web_search'), undefined))

@@ -57,17 +57,17 @@ test('the plugin declares exactly the services it consumes', () => {
   assert.equal(inject.includes('loader'), false, 'the loader seam is for the removed row restart')
 })
 
-test('composing the plugin registers the four Tavily tools', () => {
+test('composing the plugin registers the six Tavily tools', () => {
   const { tools } = bench()
   assert.deepEqual(
     tools.map((definition) => definition.name),
-    ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl']
+    ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl', 'tavily_research', 'tavily_get_research']
   )
 })
 
-test('composing the plugin registers both prompt sections', () => {
+test('composing the plugin registers all three prompt sections', () => {
   const { sections } = bench()
-  assert.deepEqual(sections.map((section) => section.name), ['tool:tavily_search', 'tool:tavily_direct'])
+  assert.deepEqual(sections.map((section) => section.name), ['tool:tavily_search', 'tool:tavily_direct', 'tool:tavily_research'])
 })
 
 test('key and usage routes come up, and no tool-switch route exists', () => {
@@ -82,7 +82,7 @@ test('key and usage routes come up, and no tool-switch route exists', () => {
 
 test('teardown unregisters every tool, prompt section, and route', () => {
   const { tools, sections, routes, teardowns } = bench()
-  assert.equal(tools.length, 4)
+  assert.equal(tools.length, 6)
   // Every registration goes through ctx.effect, so the fiber owns them all.
   assert.ok(teardowns.length >= 1, 'apply must hand the fiber its teardowns')
   for (const teardown of teardowns) teardown()

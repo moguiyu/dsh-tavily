@@ -4,7 +4,7 @@
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/moguiyu/dsh-tavily--packages-dsh-tavily/) [![推荐 dshfind](https://img.shields.io/badge/%E6%8E%A8%E8%8D%90-dshfind-ffd700?labelColor=555555)](https://dshfind.com/zh/plugins/moguiyu/dsh-tavily?ref=badge)
 
-为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）提供 Tavily 网页搜索：**多 API Key**、**轮换与故障转移**、**实时用量环**、**`extract` / `map` / `crawl` 直连工具**，以及 **Plugins（插件）页面**上的 Key 管理卡片。
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）提供 Tavily 网页搜索：**多 API Key**、**轮换与故障转移**、**实时用量环**、**`extract` / `map` / `crawl` 直连工具**、**`research` 综合调研报告**，以及 **Plugins（插件）页面**上的 Key 管理卡片。
 
 内置的 `web_search` 工具**永不被替换**：Tavily 是原生搜索的*补充*，而不是替代。本插件不注册任何网页搜索 provider，也不会改写 `web.searchProvider`。
 
@@ -18,6 +18,7 @@
 - 🔁 **Key 轮换与故障转移** —— 轮询使用；遇到 HTTP 401/429/432/433 自动换下一个 Key；负载均衡模式可按 Tavily 账号限制在途请求数。
 - 📊 **实时用量** —— 每个 Key 的 Tavily 用量与总计，全部服务端获取，Key 不出服务端。
 - ⚡ **Tavily 直连工具** —— `tavily_extract` 读取已知 URL 的完整内容，`tavily_map` 发现站点链接，`tavily_crawl` 抓取整站，共用同一套 Key 轮换。
+- 📝 **Research 综合报告** —— `tavily_research` 调用 Tavily Research 端点（`mini`/`pro`/`auto`），等待任务完成并返回带引用的综合报告；任务超时未完成时用 `tavily_get_research` 凭 `request_id` 取回。Research 的额度远高于搜索（mini 4–110、pro 15–250 额度），因此按需调用、不设默认。
 
 ## 安装
 
@@ -48,9 +49,9 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 
 `--profile <name>` 指定安装到哪个 profile；两种写法解析到同一个插件。
 
-> **环境要求** —— DSH 目前是开发者预览版（`0.1.x-rc/alpha`、`0.2.x-rc`）。工具与 Key/用量路由在 `0.1.0-rc.7` 起的每一行都可用。**卡片与 Plugins 页面的安装入口都需要 `0.1.6-alpha.2` 或更新版本** —— 该版本新增了 Plugins 页面并把插件配置移到那里；更早的版本上插件功能完整、可用命令行安装，只是没有卡片。npm 包名是带 scope 的 `@moguiyu/dsh-tavily`，不是同名的社区 `dsh-tavily` provider 替换插件。
+> **环境要求** —— DSH 目前是开发者预览版（`0.1.x-rc/alpha`、`0.2.x-rc/alpha`）。工具与 Key/用量路由在 `0.1.0-rc.7` 起的每一行都可用。**卡片与 Plugins 页面的安装入口都需要 `0.1.6-alpha.2` 或更新版本** —— 该版本新增了 Plugins 页面并把插件配置移到那里；更早的版本上插件功能完整、可用命令行安装，只是没有卡片。npm 包名是带 scope 的 `@moguiyu/dsh-tavily`，不是同名的社区 `dsh-tavily` provider 替换插件。
 
-> **兼容性** —— `0.3.x` 是单一自包含包：工具、路由与卡片都在 `@moguiyu/dsh-tavily` 内，只使用长期稳定的 `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` 接缝，不再有任何按版本特性探测的代码路径。peer 范围按宿主元组逐条列出（`^0.1.0-rc.7`、`^0.1.1-rc.1`、`^0.1.2-alpha.2`、`^0.1.3-alpha.1`、`^0.1.5-0`、`^0.1.6-0`、`^0.1.7-0`、`^0.2.0-0`），因为预发布比较符不会级联 —— 新的宿主版本线要新增比较符，而不是放宽旧的。
+> **兼容性** —— `0.3.x` 是单一自包含包：工具、路由与卡片都在 `@moguiyu/dsh-tavily` 内，只使用长期稳定的 `ctx.tools` / `ctx.webServer` / `ctx.credentials` / `ctx.systemPrompt` 接缝，不再有任何按版本特性探测的代码路径。peer 范围按宿主元组逐条列出（`^0.1.0-rc.7`、`^0.1.1-rc.1`、`^0.1.2-alpha.2`、`^0.1.3-alpha.1`、`^0.1.5-0`、`^0.1.6-0`、`^0.1.7-0`、`^0.2.0-0`、`^0.2.1-0`），因为预发布比较符不会级联 —— 新的宿主版本线要新增比较符，而不是放宽旧的。`dsh.compatibility.dshReleases` 是更窄的「已实测」商店兼容矩阵。
 
 ## 包结构
 
@@ -58,7 +59,7 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 
 | 包 | 作用 |
 |---|---|
-| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 全部功能：`tavily_search` + `tavily_extract` / `tavily_map` / `tavily_crawl`、Key/用量路由，以及 Plugins 页面上的卡片 |
+| [`@moguiyu/dsh-tavily`](packages/dsh-tavily) | 全部功能：`tavily_search` + `tavily_extract` / `tavily_map` / `tavily_crawl` + `tavily_research` / `tavily_get_research`、Key/用量路由，以及 Plugins 页面上的卡片 |
 
 ## 凭据
 
@@ -77,12 +78,16 @@ dsh plugin --profile web add github:moguiyu/dsh-tavily
 
 ## Tavily 工具
 
-`tavily_search` 以及直连工具，均独立于 `web_search`：
+`tavily_search` 以及直连工具与 research 组合，均独立于 `web_search`：
 
 - `tavily_search` —— 完整搜索能力（`search_depth`、`topic`、`days`、域名过滤、`include_answer`、`include_raw_content`）；
 - `tavily_extract` —— 抓取已知 HTTP(S) URL 的完整内容；
 - `tavily_map` —— 只发现站点链接，不抓取页面内容；
-- `tavily_crawl` —— 抓取整站并返回各页面提取内容。
+- `tavily_crawl` —— 抓取整站并返回各页面提取内容；
+- `tavily_research` —— 提交 Tavily Research 任务并等待带引用的综合报告（`model`：`mini` / `pro` / `auto`，另有 `citation_format`、`output_length`、域名过滤与可选的 `output_schema`）；
+- `tavily_get_research` —— 当任务超出首次调用的等待时间时，用 `request_id` 取回结果。
+
+`tavily_research` 会轮询任务并在完成时返回报告；`timeout_seconds: 0` 表示只排队并立即返回 id。`mini` 适合窄问题（实测约 11 秒、9 额度），`pro` 适合宽问题（数分钟）。由于 research 按次动态计费且远高于搜索（mini 4–110、pro 15–250 额度），它是每次调用的选择，而不是默认行为。
 
 compose 该插件即注册这些工具，没有单独的工具开关。若要关闭，请用其 Plugins 页面上的开关停用整个插件 —— 无论开关如何，内置 `web_search` 都保留自己的 provider，其 schema 也不会被改动。
 
