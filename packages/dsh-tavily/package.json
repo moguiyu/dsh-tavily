@@ -1,6 +1,6 @@
 {
   "name": "@moguiyu/dsh-tavily",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Advanced Tavily model tools for DeepSeek Harness (tavily_search, tavily_extract, tavily_map, tavily_crawl, tavily_research, tavily_get_research) with multi-key rotation, failover and a per-account in-flight cap, plus a key and usage management card on the Plugins page. The built-in web_search is never replaced. | DSH Tavily 可选高级搜索工具：多 Key 轮换、故障转移与按账号并发上限，另有 research 综合调研报告，插件配置页含密钥与用量管理卡片；内置 web_search 永不替换。",
   "type": "module",
   "main": "./src/index.js",
