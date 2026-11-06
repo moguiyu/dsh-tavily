@@ -95,3 +95,28 @@ test('the built-in web_search is never registered or replaced', () => {
   const { tools } = bench()
   assert.equal(tools.some((definition) => definition.name === 'web_search'), false)
 })
+
+// 0.2.2's update flow replaces an installed bundle by REMOVING the old version
+// and installing the new one while the harness keeps running
+// (`PluginManager.updateBundle` -> `removeBundle` -> `installBundle`). A
+// half-disposed composition would surface as duplicated or ghost tools exactly
+// when a user clicks Update. This is the shape in one process: compose,
+// dispose, compose again, and check the second composition is whole and the
+// first left nothing behind.
+test('a plugin update can dispose and recompose without residue', () => {
+  const first = bench()
+  assert.equal(first.tools.length, 6)
+  for (const teardown of first.teardowns) teardown()
+  assert.deepEqual(first.tools, [], 'the version being replaced must unregister everything first')
+  assert.deepEqual(first.sections, [])
+  assert.deepEqual([...first.routes.keys()], [])
+
+  const second = bench()
+  assert.deepEqual(
+    second.tools.map((definition) => definition.name),
+    ['tavily_search', 'tavily_extract', 'tavily_map', 'tavily_crawl', 'tavily_research', 'tavily_get_research'],
+    'the replacement version must register the full tool set, with no duplicates'
+  )
+  assert.equal(second.sections.length, 3)
+  assert.deepEqual([...second.routes.keys()].sort(), ['/api/tavily-manager', '/api/tavily-usage'])
+})

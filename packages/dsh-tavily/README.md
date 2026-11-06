@@ -35,5 +35,13 @@ which is exactly how the old tool-level switch broke. Both old packages are depr
 There is no tool-level on/off switch. Composing the plugin registers the tools, and the Plugins
 page's own bundle toggle is the only on/off.
 
+## Compatibility
+
+Verified on `0.1.6-alpha.2`, `0.1.7-rc.2`, `0.2.0-rc.2`, the `0.2.1-rc` line and the `0.2.2-rc`
+line, and expected to work on every declared line back to `0.1.0-rc.7`; the peer ranges list one
+comparator per host line. Installability is decided by those peer ranges, so a harness upgrade
+never needs a plugin-side flag — and an in-place update from the Plugins page is safe: the plugin
+disposes the tool half on removal, so the replacing version always starts from a clean slate.
+
 See the [workspace README](https://github.com/moguiyu/dsh-tavily#readme) for install and
 configuration.
